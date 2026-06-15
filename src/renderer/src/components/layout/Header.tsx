@@ -1,4 +1,5 @@
 import { useProjectStore } from '@renderer/stores/projectStore'
+import { useProjectIO } from '@renderer/hooks/useProjectIO'
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -11,6 +12,7 @@ export function Header(): React.JSX.Element {
   const isDirty = useProjectStore((s) => s.isDirty)
   const imageCount = useProjectStore((s) => s.images.length)
   const targetDurationSeconds = useProjectStore((s) => s.targetDurationSeconds)
+  const { saveProject, openProject, newProject } = useProjectIO()
 
   return (
     <header className="flex items-center justify-between border-b border-surface-600 bg-surface-800 px-5 py-2.5">
@@ -27,14 +29,36 @@ export function Header(): React.JSX.Element {
         </div>
       </div>
 
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={newProject}
+          className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 hover:bg-surface-700 hover:text-zinc-200"
+        >
+          New
+        </button>
+        <button
+          type="button"
+          onClick={openProject}
+          className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 hover:bg-surface-700 hover:text-zinc-200"
+        >
+          Open
+        </button>
+        <button
+          type="button"
+          onClick={saveProject}
+          className="rounded-lg bg-surface-700 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-surface-600"
+        >
+          Save
+        </button>
+      </div>
+
       <div className="flex items-center gap-4 text-xs text-zinc-400">
         <span>
           {imageCount} image{imageCount !== 1 ? 's' : ''}
         </span>
         <span className="h-3 w-px bg-surface-600" />
         <span>Target: {formatDuration(targetDurationSeconds)}</span>
-        <span className="h-3 w-px bg-surface-600" />
-        <span className="capitalize">{window.api?.platform ?? 'desktop'}</span>
       </div>
     </header>
   )

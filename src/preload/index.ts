@@ -1,22 +1,58 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type {
+  ExportRequest,
+  ExportResult,
+  ImageMetadata,
+  ProjectData,
+  RenderProgress
+} from '../shared/types'
 
-const api = {
+const slideshowApi = {
   platform: process.platform,
-  versions: {
-    node: process.versions.node,
-    chrome: process.versions.chrome,
-    electron: process.versions.electron
+
+  checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('ffmpeg:check'),
+
+  selectImages: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectImages'),
+
+  selectAudio: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectAudio'),
+
+  selectExportPath: (defaultName: string): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:selectExportPath', defaultName),
+
+  getImageMetadata: (filePath: string): Promise<ImageMetadata> =>
+    ipcRenderer.invoke('media:getImageMetadata', filePath),
+
+  getAudioMetadata: (filePath: string): Promise<{
+    filePath: string
+    fileName: string
+    format: string
+    durationSeconds: number
+  }> => ipcRenderer.invoke('media:getAudioMetadata', filePath),
+
+  saveProject: (data: ProjectData): Promise<string | null> =>
+    ipcRenderer.invoke('project:save', data),
+
+  openProject: (): Promise<{ data: ProjectData; filePath: string } | null> =>
+    ipcRenderer.invoke('project:open'),
+
+  exportVideo: (request: ExportRequest): Promise<ExportResult> =>
+    ipcRenderer.invoke('export:render', request),
+
+  onExportProgress: (callback: (progress: RenderProgress) => void): (() => void) => {
+    const handler = (_: unknown, progress: RenderProgress): void => callback(progress)
+    ipcRenderer.on('export:progress', handler)
+    return () => ipcRenderer.removeListener('export:progress', handler)
   }
 }
 
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('slideshow', slideshowApi)
   } catch (error) {
     console.error(error)
   }
 }
 
-export type AppApi = typeof api
+export type SlideshowApi = typeof slideshowApi
