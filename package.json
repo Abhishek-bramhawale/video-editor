@@ -1,0 +1,35 @@
+{
+  "name": "cinematic-slideshow",
+  "version": "0.1.0",
+  "description": "Professional slideshow video generator with cinematic Ken Burns effects",
+  "main": "./out/main/index.js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^4.5.1",
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.1.0",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
