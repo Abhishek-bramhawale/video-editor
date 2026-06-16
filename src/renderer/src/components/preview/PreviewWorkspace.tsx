@@ -124,6 +124,8 @@ function transitionStyles(transitionId: string | null | undefined, tRaw: number)
 
 export function PreviewWorkspace(): React.JSX.Element {
   const images = useProjectStore((s) => s.images)
+  const reorderImages = useProjectStore((s) => s.reorderImages)
+  const removeImage = useProjectStore((s) => s.removeImage)
   const { state, toggle, seek, getTransform } = usePreviewPlayback()
 
   const currentImage = images[state.currentImageIndex]
@@ -211,8 +213,11 @@ export function PreviewWorkspace(): React.JSX.Element {
       <Timeline
         currentTime={state.currentTime}
         totalDuration={state.totalDuration}
-        imageCount={images.length}
+        images={images}
         onSeek={seek}
+        onReorder={reorderImages}
+        onRemove={removeImage}
+        activeIndex={state.currentImageIndex}
       />
     </>
   )

@@ -9,11 +9,47 @@ import {
 
 type ProgressCallback = (progress: RenderProgress) => void
 
-function runFfmpeg(args: string[]): Promise<void> {
+function runFfmpegWithProgress(
+  args: string[],
+  totalSeconds: number,
+  onProgress: ProgressCallback
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { windowsHide: true })
     let stderr = ''
     proc.stderr.on('data', (d) => { stderr += d.toString() })
+    let stdoutBuf = ''
+    let lastPercent = -1
+
+    // FFmpeg -progress key/value lines come on stdout
+    proc.stdout?.on('data', (d) => {
+      stdoutBuf += d.toString()
+      let idx: number
+      while ((idx = stdoutBuf.indexOf('\n')) >= 0) {
+        const line = stdoutBuf.slice(0, idx).trim()
+        stdoutBuf = stdoutBuf.slice(idx + 1)
+        const eq = line.indexOf('=')
+        if (eq <= 0) continue
+        const key = line.slice(0, eq)
+        const value = line.slice(eq + 1)
+
+        if (key === 'out_time_ms') {
+          const outTimeMs = parseInt(value, 10)
+          if (!Number.isFinite(outTimeMs) || totalSeconds <= 0) continue
+          const pct = Math.max(0, Math.min(99, Math.floor((outTimeMs / 1_000_000 / totalSeconds) * 100)))
+          if (pct !== lastPercent) {
+            lastPercent = pct
+            onProgress({
+              stage: 'segments',
+              current: 1,
+              total: 1,
+              message: `Exporting… ${pct}%`,
+              percent: pct
+            })
+          }
+        }
+      }
+    })
     proc.on('close', (code) => {
       if (code === 0) resolve()
       else reject(new Error(stderr.slice(-800) || `FFmpeg exited with code ${code}`))
@@ -77,11 +113,13 @@ export async function renderSlideshow(
     stage: 'segments',
     current: 1,
     total: 1,
-    message: `Rendering ${images.length} images in a single pass`,
-    percent: 10
+    message: `Starting export (${images.length} images)`,
+    percent: 0
   })
 
   args.push(
+    '-nostats',
+    '-progress', 'pipe:1',
     '-filter_complex', filterComplex,
     '-map', `[${videoLabel}]`,
     '-c:v', vcodec,
@@ -104,7 +142,7 @@ export async function renderSlideshow(
 
   args.push(outputPath)
 
-  await runFfmpeg(args)
+  await runFfmpegWithProgress(args, project.targetDurationSeconds, onProgress)
 
   onProgress({
     stage: 'done',
