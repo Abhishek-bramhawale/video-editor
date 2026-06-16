@@ -1,4 +1,4 @@
-import type { KenBurnsEffectId } from '../../shared/types'
+import type { KenBurnsEffectId, TransitionId } from '../../shared/types'
 import { RESOLUTION_MAP } from '../../shared/types'
 
 /** Effect zoom/pan expressions — mirrored from renderer effects for FFmpeg */
@@ -39,7 +39,7 @@ const XFADE_MAP: Record<string, string> = {
   'slide-right': 'slideright',
   'slide-up': 'slideup',
   'slide-down': 'slidedown',
-  push: 'pushleft',
+  push: 'coverleft',
   zoom: 'zoomin',
   blur: 'hblur',
   'directional-wipe': 'wipeleft',
@@ -55,16 +55,94 @@ export function buildZoompanFilter(
   durationSeconds: number
 ): string {
   const effect = EFFECT_FFMPEG[effectId] ?? EFFECT_FFMPEG['slow-zoom-center']
-  const frames = Math.max(1, Math.round(durationSeconds * fps))
+  // zoompan expressions below interpolate using a denominator derived from frame count.
+  // Ensure we never end up with 0 (or negative) to avoid invalid filter graphs.
+  const frames = Math.max(2, Math.round(durationSeconds * fps))
+  const denom = Math.max(1, frames - 1)
   const [z0, z1] = effect.zoom
   const [x0, x1] = effect.panX
   const [y0, y1] = effect.panY
 
-  const zExpr = `${z0}+${z1 - z0}*(-0.5*cos(PI*on/(d-1))+0.5)`
-  const xExpr = `iw/2-(iw/zoom/2)+(${x1 - x0})*(-0.5*cos(PI*on/(d-1))+0.5)+${x0}`
-  const yExpr = `ih/2-(ih/zoom/2)+(${y1 - y0})*(-0.5*cos(PI*on/(d-1))+0.5)+${y0}`
+  const zExpr = `${z0}+${z1 - z0}*(-0.5*cos(PI*on/${denom})+0.5)`
+  const xExpr = `iw/2-(iw/zoom/2)+(${x1 - x0})*(-0.5*cos(PI*on/${denom})+0.5)+${x0}`
+  const yExpr = `ih/2-(ih/zoom/2)+(${y1 - y0})*(-0.5*cos(PI*on/${denom})+0.5)+${y0}`
 
-  return `scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,crop=${width * 2}:${height * 2},zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${width}x${height}:fps=${fps}`
+  const overscan = 1.4
+  const scaleW = Math.round(width * overscan)
+  const scaleH = Math.round(height * overscan)
+
+  return `scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,crop=${scaleW}:${scaleH},zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${width}x${height}:fps=${fps}`
+}
+
+const VALID_XFADE_TRANSITIONS = new Set([
+  'fade', 'wipeleft', 'wiperight', 'wipeup', 'wipedown',
+  'slideleft', 'slideright', 'slideup', 'slidedown',
+  'circlecrop', 'rectcrop', 'distance', 'fadeblack', 'fadewhite', 'radial',
+  'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
+  'circleopen', 'circleclose', 'vertopen', 'vertclose', 'horzopen', 'horzclose',
+  'dissolve', 'pixelize', 'diagtl', 'diagtr', 'diagbl', 'diagbr',
+  'hlslice', 'hrslice', 'vuslice', 'vdslice', 'hblur', 'fadegrays',
+  'wipetl', 'wipetr', 'wipebl', 'wipebr', 'squeezeh', 'squeezev', 'zoomin',
+  'fadefast', 'fadeslow', 'hlwind', 'hrwind', 'vuwind', 'vdwind',
+  'coverleft', 'coverright', 'coverup', 'coverdown',
+  'revealleft', 'revealright', 'revealup', 'revealdown'
+])
+
+export interface SlideshowClip {
+  effectId: KenBurnsEffectId | null
+  transitionId: TransitionId | null
+}
+
+export function buildSlideshowFilterComplex(
+  clips: SlideshowClip[],
+  width: number,
+  height: number,
+  fps: number,
+  perImageDuration: number,
+  transitionSeconds: number,
+  audio?: { inputIndex: number; targetDuration: number; fadeIn: number; fadeOut: number }
+): { filterComplex: string; videoLabel: string; audioLabel?: string } {
+  const parts: string[] = []
+
+  for (let i = 0; i < clips.length; i++) {
+    const vf = buildZoompanFilter(
+      clips[i].effectId ?? 'slow-zoom-center',
+      width,
+      height,
+      fps,
+      perImageDuration
+    )
+    parts.push(`[${i}:v]${vf},setpts=PTS-STARTPTS[v${i}]`)
+  }
+
+  let videoLabel = 'v0'
+  if (clips.length > 1) {
+    let prevLabel = 'v0'
+    let accumulatedDuration = perImageDuration
+
+    for (let i = 1; i < clips.length; i++) {
+      const xfadeName = getXfadeName(clips[i - 1].transitionId ?? 'crossfade')
+      const offset = Math.max(0, accumulatedDuration - transitionSeconds)
+      const outLabel = i === clips.length - 1 ? 'vout' : `t${i}`
+      parts.push(
+        `[${prevLabel}][v${i}]xfade=transition=${xfadeName}:duration=${transitionSeconds}:offset=${offset.toFixed(3)}[${outLabel}]`
+      )
+      prevLabel = outLabel
+      accumulatedDuration += perImageDuration - transitionSeconds
+    }
+    videoLabel = 'vout'
+  }
+
+  let audioLabel: string | undefined
+  if (audio) {
+    const fadeOutStart = Math.max(0, audio.targetDuration - audio.fadeOut)
+    audioLabel = 'aout'
+    parts.push(
+      `[${audio.inputIndex}:a]atrim=0:${audio.targetDuration},afade=t=in:st=0:d=${audio.fadeIn},afade=t=out:st=${fadeOutStart}:d=${audio.fadeOut}[${audioLabel}]`
+    )
+  }
+
+  return { filterComplex: parts.join(';'), videoLabel, audioLabel }
 }
 
 export function getResolution(resolution: '720p' | '1080p'): { width: number; height: number } {
@@ -72,7 +150,8 @@ export function getResolution(resolution: '720p' | '1080p'): { width: number; he
 }
 
 export function getXfadeName(transitionId: string): string {
-  return XFADE_MAP[transitionId] ?? 'fade'
+  const name = XFADE_MAP[transitionId] ?? 'fade'
+  return VALID_XFADE_TRANSITIONS.has(name) ? name : 'fade'
 }
 
 export function computePerImageDuration(
@@ -88,10 +167,10 @@ export function computePerImageDuration(
 export function getCodecArgs(codec: 'h264' | 'h265' | 'mov'): { vcodec: string; extra: string[] } {
   switch (codec) {
     case 'h265':
-      return { vcodec: 'libx265', extra: ['-tag:v', 'hvc1'] }
+      return { vcodec: 'libx265', extra: ['-preset', 'veryfast', '-crf', '22', '-tag:v', 'hvc1'] }
     case 'mov':
-      return { vcodec: 'libx264', extra: ['-movflags', '+faststart'] }
+      return { vcodec: 'libx264', extra: ['-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart'] }
     default:
-      return { vcodec: 'libx264', extra: ['-preset', 'medium', '-crf', '18', '-movflags', '+faststart'] }
+      return { vcodec: 'libx264', extra: ['-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart', '-threads', '0'] }
   }
 }

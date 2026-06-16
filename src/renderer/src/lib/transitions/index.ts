@@ -17,7 +17,7 @@ export const TRANSITION_EFFECTS: TransitionEffect[] = [
   { id: 'slide-right', name: 'Slide Right', ffmpegName: 'slideright', durationSeconds: 0.9 },
   { id: 'slide-up', name: 'Slide Up', ffmpegName: 'slideup', durationSeconds: 0.9 },
   { id: 'slide-down', name: 'Slide Down', ffmpegName: 'slidedown', durationSeconds: 0.9 },
-  { id: 'push', name: 'Push', ffmpegName: 'pushleft', durationSeconds: 1 },
+  { id: 'push', name: 'Push', ffmpegName: 'coverleft', durationSeconds: 1 },
   { id: 'zoom', name: 'Zoom', ffmpegName: 'zoomin', durationSeconds: 1 },
   { id: 'blur', name: 'Blur', ffmpegName: 'hblur', durationSeconds: 1 },
   { id: 'directional-wipe', name: 'Directional Wipe', ffmpegName: 'wipeleft', durationSeconds: 0.8 },
