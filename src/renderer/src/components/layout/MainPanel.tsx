@@ -8,7 +8,7 @@ export function MainPanel(): React.JSX.Element {
   const activePanel = useProjectStore((s) => s.activePanel)
 
   return (
-    <div className="h-full overflow-y-auto bg-surface-900">
+    <div className="h-full min-h-0 overflow-hidden bg-surface-900">
       {activePanel === 'images' && <ImageUploadPanel />}
       {activePanel === 'duration' && <DurationPanel />}
       {activePanel === 'music' && <MusicPanel />}

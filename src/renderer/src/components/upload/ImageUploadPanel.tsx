@@ -35,8 +35,8 @@ export function ImageUploadPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto p-4">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col p-4">
+      <div className="mb-3 flex shrink-0 items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Images</h2>
           <p className="text-sm text-zinc-400">
@@ -65,7 +65,7 @@ export function ImageUploadPanel(): React.JSX.Element {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-center justify-between rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-400 ring-1 ring-red-500/30">
+        <div className="mb-3 flex shrink-0 items-center justify-between rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-400 ring-1 ring-red-500/30">
           <span>{error}</span>
           <button type="button" onClick={clearError} className="ml-3 text-red-300 hover:text-white">
             Dismiss
@@ -73,26 +73,27 @@ export function ImageUploadPanel(): React.JSX.Element {
         </div>
       )}
 
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
-        className={`mb-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors ${
-          dragOver
-            ? 'border-accent bg-accent/10'
-            : 'border-surface-600 bg-surface-800/50'
-        }`}
-      >
-        <svg className="mb-3 h-10 w-10 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-        </svg>
-        <p className="text-sm font-medium text-zinc-300">Drag & drop images here</p>
-        <p className="mt-1 text-xs text-zinc-500">JPG, JPEG, PNG, WEBP — hundreds supported</p>
-      </div>
+      {/* Drop zone + image grid share one scroll area — scroll up to hide drop zone and see more images */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          className={`mb-3 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-5 transition-colors ${
+            dragOver
+              ? 'border-accent bg-accent/10'
+              : 'border-surface-600 bg-surface-800/50'
+          }`}
+        >
+          <svg className="mb-2 h-8 w-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+          </svg>
+          <p className="text-sm font-medium text-zinc-300">Drag & drop images here</p>
+          <p className="mt-1 text-xs text-zinc-500">JPG, JPEG, PNG, WEBP</p>
+        </div>
 
-      {images.length > 0 && (
-        <div className="flex-1 overflow-auto">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+        {images.length > 0 && (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 pb-2">
             {images.map((img, index) => (
               <div
                 key={img.id}
@@ -136,8 +137,8 @@ export function ImageUploadPanel(): React.JSX.Element {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
