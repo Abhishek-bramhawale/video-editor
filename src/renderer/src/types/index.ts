@@ -4,7 +4,6 @@ export type {
   ExportCodec,
   ExportResolution,
   KenBurnsEffectId,
-  TransitionId,
   DurationMode,
   SlideshowImage,
   AudioTrack,
@@ -18,8 +17,11 @@ export type {
   RenderProgress
 } from '@shared/types'
 
+export type { TransitionId, TransitionFamily } from '@shared/transitions/catalog'
+
 export {
   DEFAULT_EXPORT_SETTINGS,
+  DEFAULT_PER_IMAGE_DURATION_SECONDS,
   DEFAULT_TARGET_DURATION_SECONDS,
   DEFAULT_TRANSITION_SECONDS,
   DEFAULT_AUDIO_FADE_SECONDS,

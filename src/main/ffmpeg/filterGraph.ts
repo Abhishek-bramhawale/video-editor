@@ -1,5 +1,6 @@
 import type { KenBurnsEffectId, TransitionId } from '../../shared/types'
 import { RESOLUTION_MAP } from '../../shared/types'
+import { getTransitionFfmpegName } from '../../shared/transitions/catalog'
 
 /** Effect zoom/pan expressions — mirrored from renderer effects for FFmpeg */
 const EFFECT_FFMPEG: Record<
@@ -29,23 +30,6 @@ const EFFECT_FFMPEG: Record<
   parallax: { zoom: [1.1, 1.18], panX: [-35, 35], panY: [20, -20] }
 }
 
-const XFADE_MAP: Record<string, string> = {
-  crossfade: 'fade',
-  dissolve: 'dissolve',
-  'smooth-fade': 'fadeblack',
-  'dip-to-black': 'fadeblack',
-  'dip-to-white': 'fadewhite',
-  'slide-left': 'slideleft',
-  'slide-right': 'slideright',
-  'slide-up': 'slideup',
-  'slide-down': 'slidedown',
-  push: 'coverleft',
-  zoom: 'zoomin',
-  blur: 'hblur',
-  'directional-wipe': 'wipeleft',
-  'soft-wipe': 'wipetl',
-  'cinematic-wipe': 'circlecrop'
-}
 
 export function buildZoompanFilter(
   effectId: KenBurnsEffectId,
@@ -74,19 +58,6 @@ export function buildZoompanFilter(
   return `scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,crop=${scaleW}:${scaleH},zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${width}x${height}:fps=${fps}`
 }
 
-const VALID_XFADE_TRANSITIONS = new Set([
-  'fade', 'wipeleft', 'wiperight', 'wipeup', 'wipedown',
-  'slideleft', 'slideright', 'slideup', 'slidedown',
-  'circlecrop', 'rectcrop', 'distance', 'fadeblack', 'fadewhite', 'radial',
-  'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
-  'circleopen', 'circleclose', 'vertopen', 'vertclose', 'horzopen', 'horzclose',
-  'dissolve', 'pixelize', 'diagtl', 'diagtr', 'diagbl', 'diagbr',
-  'hlslice', 'hrslice', 'vuslice', 'vdslice', 'hblur', 'fadegrays',
-  'wipetl', 'wipetr', 'wipebl', 'wipebr', 'squeezeh', 'squeezev', 'zoomin',
-  'fadefast', 'fadeslow', 'hlwind', 'hrwind', 'vuwind', 'vdwind',
-  'coverleft', 'coverright', 'coverup', 'coverdown',
-  'revealleft', 'revealright', 'revealup', 'revealdown'
-])
 
 export interface SlideshowClip {
   effectId: KenBurnsEffectId | null
@@ -150,8 +121,7 @@ export function getResolution(resolution: '720p' | '1080p'): { width: number; he
 }
 
 export function getXfadeName(transitionId: string): string {
-  const name = XFADE_MAP[transitionId] ?? 'fade'
-  return VALID_XFADE_TRANSITIONS.has(name) ? name : 'fade'
+  return getTransitionFfmpegName(transitionId)
 }
 
 export function computePerImageDuration(

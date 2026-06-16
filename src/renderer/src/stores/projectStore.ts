@@ -8,7 +8,7 @@ import type {
 } from '@renderer/types'
 import {
   DEFAULT_EXPORT_SETTINGS,
-  DEFAULT_TARGET_DURATION_SECONDS,
+  DEFAULT_PER_IMAGE_DURATION_SECONDS,
   DEFAULT_TRANSITION_SECONDS
 } from '@renderer/types'
 import {
@@ -83,15 +83,13 @@ function syncFromPerImage(
   }
 }
 
-const defaultPerImage = computePerImageFromTotal(DEFAULT_TARGET_DURATION_SECONDS, 1)
-
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
   images: [] as SlideshowImage[],
-  targetDurationSeconds: DEFAULT_TARGET_DURATION_SECONDS,
-  durationMode: 'total' as DurationMode,
-  perImageDurationSeconds: defaultPerImage,
+  targetDurationSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
+  durationMode: 'per-image' as DurationMode,
+  perImageDurationSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
   audio: null as AudioTrack | null,
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
   isDirty: false

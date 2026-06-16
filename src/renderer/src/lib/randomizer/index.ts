@@ -1,4 +1,5 @@
 import type { KenBurnsEffectId, TransitionId } from '@shared/types'
+import { getTransitionFamily } from '@shared/transitions/catalog'
 import { KEN_BURNS_EFFECTS } from '../effects'
 import { TRANSITION_EFFECTS } from '../transitions'
 
@@ -28,25 +29,6 @@ const EFFECT_FAMILY: Record<KenBurnsEffectId, string> = {
   parallax: 'diagonal',
   'subtle-float': 'drift',
   'cinematic-drift': 'drift'
-}
-
-/** Group transitions by visual direction */
-const TRANSITION_FAMILY: Record<TransitionId, string> = {
-  crossfade: 'fade',
-  dissolve: 'fade',
-  'smooth-fade': 'fade',
-  'dip-to-black': 'fade',
-  'dip-to-white': 'fade',
-  blur: 'fade',
-  zoom: 'zoom',
-  'slide-left': 'left',
-  push: 'left',
-  'directional-wipe': 'left',
-  'slide-right': 'right',
-  'slide-up': 'up',
-  'slide-down': 'down',
-  'soft-wipe': 'wipe',
-  'cinematic-wipe': 'wipe'
 }
 
 function pickRandom<T>(items: T[], exclude: T[]): T {
@@ -83,13 +65,13 @@ export class SlideshowRandomizer {
 
   pickTransition(): TransitionId {
     const last = this.recentTransitions[this.recentTransitions.length - 1]
-    const lastFamily = last ? TRANSITION_FAMILY[last] : null
-    const prevTwo = this.recentTransitions.slice(-2).map((id) => TRANSITION_FAMILY[id])
+    const lastFamily = last ? getTransitionFamily(last) : null
+    const prevTwo = this.recentTransitions.slice(-2).map((id) => getTransitionFamily(id))
     const repeatedFamily =
       prevTwo.length === 2 && prevTwo[0] === prevTwo[1] ? prevTwo[0] : null
 
     const exclude = TRANSITION_IDS.filter((id) => {
-      const family = TRANSITION_FAMILY[id]
+      const family = getTransitionFamily(id)
       if (lastFamily && family === lastFamily) return true
       if (repeatedFamily && family === repeatedFamily) return true
       return false

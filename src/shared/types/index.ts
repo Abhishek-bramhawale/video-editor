@@ -34,23 +34,8 @@ export type KenBurnsEffectId =
   | 'documentary'
   | 'parallax'
 
-/** Transition effect identifiers */
-export type TransitionId =
-  | 'crossfade'
-  | 'dissolve'
-  | 'smooth-fade'
-  | 'dip-to-black'
-  | 'dip-to-white'
-  | 'slide-left'
-  | 'slide-right'
-  | 'slide-up'
-  | 'slide-down'
-  | 'push'
-  | 'zoom'
-  | 'blur'
-  | 'directional-wipe'
-  | 'soft-wipe'
-  | 'cinematic-wipe'
+import type { TransitionId } from '../transitions/catalog'
+export type { TransitionId, TransitionFamily } from '../transitions/catalog'
 
 /** A single image in the slideshow */
 export interface SlideshowImage {
@@ -146,6 +131,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   fps: 30
 }
 
+export const DEFAULT_PER_IMAGE_DURATION_SECONDS = 5
 export const DEFAULT_TARGET_DURATION_SECONDS = 240
 export const DEFAULT_TRANSITION_SECONDS = 1
 export const DEFAULT_AUDIO_FADE_SECONDS = 2
