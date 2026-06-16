@@ -1,13 +1,25 @@
 import { usePreviewPlayback } from '@renderer/hooks/usePreviewPlayback'
 import { getTransitionPreviewStyles } from '@renderer/lib/transitions/preview'
 import { useProjectStore } from '@renderer/stores/projectStore'
+import { useUiStore } from '@renderer/stores/uiStore'
 import { Timeline } from '@renderer/components/timeline/Timeline'
+import { ResizeHandle } from '@renderer/components/layout/ResizeHandle'
+import { useCallback } from 'react'
 
 export function PreviewWorkspace(): React.JSX.Element {
   const images = useProjectStore((s) => s.images)
   const reorderImages = useProjectStore((s) => s.reorderImages)
   const removeImage = useProjectStore((s) => s.removeImage)
+  const timelineHeight = useUiStore((s) => s.timelineHeight)
+  const setTimelineHeight = useUiStore((s) => s.setTimelineHeight)
   const { state, toggle, seek, getTransform } = usePreviewPlayback()
+
+  const onResizeTimeline = useCallback(
+    (deltaY: number) => {
+      setTimelineHeight(timelineHeight - deltaY)
+    },
+    [timelineHeight, setTimelineHeight]
+  )
 
   const currentImage = images[state.currentImageIndex]
   const nextImage = images[state.currentImageIndex + 1]
@@ -18,7 +30,7 @@ export function PreviewWorkspace(): React.JSX.Element {
     : null
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3">
         <div className="relative mx-auto flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
           <div className="relative h-full aspect-video overflow-hidden">
@@ -91,15 +103,18 @@ export function PreviewWorkspace(): React.JSX.Element {
         )}
       </div>
 
-      <Timeline
-        currentTime={state.currentTime}
-        totalDuration={state.totalDuration}
-        images={images}
-        onSeek={seek}
-        onReorder={reorderImages}
-        onRemove={removeImage}
-        activeIndex={state.currentImageIndex}
-      />
-    </>
+      <ResizeHandle onResize={onResizeTimeline} />
+      <div className="shrink-0 overflow-hidden" style={{ height: timelineHeight }}>
+        <Timeline
+          currentTime={state.currentTime}
+          totalDuration={state.totalDuration}
+          images={images}
+          onSeek={seek}
+          onReorder={reorderImages}
+          onRemove={removeImage}
+          activeIndex={state.currentImageIndex}
+        />
+      </div>
+    </div>
   )
 }

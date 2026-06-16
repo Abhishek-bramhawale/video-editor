@@ -180,10 +180,8 @@ export function getTransitionPreviewStyles(
     case 'wind-down':
       return slide('y', 1, t)
     case 'wipe-left':
-    case 'color-swipe-red':
       return wipeInset('left', t)
     case 'wipe-right':
-    case 'color-swipe-blue':
       return wipeInset('right', t)
     case 'wipe-up':
       return wipeInset('top', t)
@@ -226,12 +224,11 @@ export function getTransitionPreviewStyles(
     case 'circle-close':
     case 'iris-out':
       return circleReveal(t, true)
-    case 'square-close':
+    case 'rect-crop':
+      return squareReveal(t)
     case 'shutter-horizontal':
     case 'shutter-vertical':
       return squareReveal(t)
-    case 'square-open':
-      return squareReveal(t, true)
     case 'vertical-open':
       return blinds('x', true, t)
     case 'vertical-close':

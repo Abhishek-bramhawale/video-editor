@@ -4,7 +4,8 @@ import type {
   AudioTrack,
   DurationMode,
   ExportSettings,
-  SlideshowImage
+  SlideshowImage,
+  TransitionId
 } from '@renderer/types'
 import {
   DEFAULT_EXPORT_SETTINGS,
@@ -24,6 +25,7 @@ interface ProjectState {
   targetDurationSeconds: number
   durationMode: DurationMode
   perImageDurationSeconds: number
+  transitionSeconds: number
   audio: AudioTrack | null
   exportSettings: ExportSettings
   isDirty: boolean
@@ -32,6 +34,8 @@ interface ProjectState {
   setProjectName: (name: string) => void
   setTargetDurationSeconds: (seconds: number) => void
   setPerImageDurationSeconds: (seconds: number) => void
+  setTransitionSeconds: (seconds: number) => void
+  setImageTransition: (imageIndex: number, transitionId: TransitionId) => void
   addImages: (images: SlideshowImage[]) => void
   removeImage: (id: string) => void
   reorderImages: (fromIndex: number, toIndex: number) => void
@@ -43,6 +47,7 @@ interface ProjectState {
     targetDurationSeconds: number
     durationMode?: DurationMode
     perImageDurationSeconds?: number
+    transitionSeconds?: number
     images: SlideshowImage[]
     audio: AudioTrack | null
     exportSettings: ExportSettings
@@ -64,9 +69,10 @@ function applyPerImageToImages(
 
 function syncFromTotal(
   images: SlideshowImage[],
-  targetSeconds: number
+  targetSeconds: number,
+  transitionSeconds: number
 ): { images: SlideshowImage[]; perImageDurationSeconds: number } {
-  const perImage = computePerImageFromTotal(targetSeconds, images.length)
+  const perImage = computePerImageFromTotal(targetSeconds, images.length, transitionSeconds)
   return {
     images: applyPerImageToImages(images, perImage),
     perImageDurationSeconds: perImage
@@ -75,11 +81,12 @@ function syncFromTotal(
 
 function syncFromPerImage(
   images: SlideshowImage[],
-  perImage: number
+  perImage: number,
+  transitionSeconds: number
 ): { images: SlideshowImage[]; targetDurationSeconds: number } {
   return {
     images: applyPerImageToImages(images, perImage),
-    targetDurationSeconds: computeTotalFromPerImage(perImage, images.length)
+    targetDurationSeconds: computeTotalFromPerImage(perImage, images.length, transitionSeconds)
   }
 }
 
@@ -90,6 +97,7 @@ const initialState = {
   targetDurationSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
   durationMode: 'per-image' as DurationMode,
   perImageDurationSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
+  transitionSeconds: DEFAULT_TRANSITION_SECONDS,
   audio: null as AudioTrack | null,
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
   isDirty: false
@@ -105,7 +113,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setTargetDurationSeconds: (seconds) => {
     const target = Math.max(1, seconds)
     set((state) => {
-      const synced = syncFromTotal(state.images, target)
+      const synced = syncFromTotal(state.images, target, state.transitionSeconds)
       return {
         durationMode: 'total',
         targetDurationSeconds: target,
@@ -119,7 +127,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setPerImageDurationSeconds: (seconds) => {
     const perImage = Math.max(0.1, seconds)
     set((state) => {
-      const synced = syncFromPerImage(state.images, perImage)
+      const synced = syncFromPerImage(state.images, perImage, state.transitionSeconds)
       return {
         durationMode: 'per-image',
         perImageDurationSeconds: perImage,
@@ -130,14 +138,40 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  setTransitionSeconds: (seconds) => {
+    const transition = Math.max(0.1, Math.min(3, seconds))
+    set((state) => {
+      if (state.durationMode === 'per-image') {
+        const synced = syncFromPerImage(state.images, state.perImageDurationSeconds, transition)
+        return { transitionSeconds: transition, ...synced, isDirty: true }
+      }
+      const synced = syncFromTotal(state.images, state.targetDurationSeconds, transition)
+      return {
+        transitionSeconds: transition,
+        images: synced.images,
+        perImageDurationSeconds: synced.perImageDurationSeconds,
+        isDirty: true
+      }
+    })
+  },
+
+  setImageTransition: (imageIndex, transitionId) => {
+    set((state) => ({
+      images: state.images.map((img, i) =>
+        i === imageIndex ? { ...img, transitionId } : img
+      ),
+      isDirty: true
+    }))
+  },
+
   addImages: (newImages) => {
     set((state) => {
       const combined = normalizeOrders([...state.images, ...newImages])
       if (state.durationMode === 'per-image') {
-        const synced = syncFromPerImage(combined, state.perImageDurationSeconds)
+        const synced = syncFromPerImage(combined, state.perImageDurationSeconds, state.transitionSeconds)
         return { ...synced, images: synced.images, isDirty: true }
       }
-      const synced = syncFromTotal(combined, state.targetDurationSeconds)
+      const synced = syncFromTotal(combined, state.targetDurationSeconds, state.transitionSeconds)
       return {
         images: synced.images,
         perImageDurationSeconds: synced.perImageDurationSeconds,
@@ -151,10 +185,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => {
       const filtered = normalizeOrders(state.images.filter((img) => img.id !== id))
       if (state.durationMode === 'per-image') {
-        const synced = syncFromPerImage(filtered, state.perImageDurationSeconds)
+        const synced = syncFromPerImage(filtered, state.perImageDurationSeconds, state.transitionSeconds)
         return { ...synced, isDirty: true }
       }
-      const synced = syncFromTotal(filtered, state.targetDurationSeconds)
+      const synced = syncFromTotal(filtered, state.targetDurationSeconds, state.transitionSeconds)
       return {
         images: synced.images,
         perImageDurationSeconds: synced.perImageDurationSeconds,
@@ -199,19 +233,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     slideshowRandomizer.reset()
     const images = normalizeOrders(data.images)
     const durationMode = data.durationMode ?? 'total'
+    const transitionSeconds = data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS
     const perImage =
       data.perImageDurationSeconds ??
-      (images[0]?.durationSeconds || computePerImageFromTotal(data.targetDurationSeconds, images.length))
+      (images[0]?.durationSeconds ||
+        computePerImageFromTotal(data.targetDurationSeconds, images.length, transitionSeconds))
 
     set({
       projectName: data.name,
       durationMode,
       perImageDurationSeconds: perImage,
+      transitionSeconds,
       targetDurationSeconds: data.targetDurationSeconds,
       images:
         durationMode === 'per-image'
           ? applyPerImageToImages(images, perImage)
-          : syncFromTotal(images, data.targetDurationSeconds).images,
+          : syncFromTotal(images, data.targetDurationSeconds, transitionSeconds).images,
       audio: data.audio,
       exportSettings: data.exportSettings,
       isDirty: false
@@ -244,6 +281,7 @@ export function buildProjectData(): import('@renderer/types').ProjectData {
     targetDurationSeconds: state.targetDurationSeconds,
     durationMode: state.durationMode,
     perImageDurationSeconds: state.perImageDurationSeconds,
+    transitionSeconds: state.transitionSeconds,
     images: state.images,
     audio: state.audio,
     exportSettings: state.exportSettings

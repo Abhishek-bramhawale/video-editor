@@ -76,7 +76,7 @@ export async function renderSlideshow(
 
   const { width, height } = getResolution(project.exportSettings.resolution)
   const fps = project.exportSettings.fps
-  const transitionSeconds = DEFAULT_TRANSITION_SECONDS
+  const transitionSeconds = project.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS
   const perImageDuration = Math.max(
     1 / Math.max(1, fps),
     images[0]?.durationSeconds ?? project.targetDurationSeconds

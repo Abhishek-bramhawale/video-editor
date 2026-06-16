@@ -82,6 +82,7 @@ export interface ProjectData {
   targetDurationSeconds: number
   durationMode?: DurationMode
   perImageDurationSeconds?: number
+  transitionSeconds?: number
   images: SlideshowImage[]
   audio: AudioTrack | null
   exportSettings: ExportSettings

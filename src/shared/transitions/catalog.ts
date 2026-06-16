@@ -80,8 +80,7 @@ export const TRANSITION_CATALOG = [
   { id: 'zoom', name: 'Zoom In', ffmpegName: 'zoomin', durationSeconds: 1, family: 'zoom', previewKind: 'zoom' },
   { id: 'portal-zoom', name: 'Portal Zoom', ffmpegName: 'zoomin', durationSeconds: 1.2, family: 'zoom', previewKind: 'portal-zoom' },
   { id: 'distance-zoom', name: 'Distance Zoom', ffmpegName: 'distance', durationSeconds: 1.1, family: 'zoom', previewKind: 'distance-zoom' },
-  { id: 'square-close', name: 'Square Close', ffmpegName: 'rectcrop', durationSeconds: 1, family: 'circle', previewKind: 'square-close' },
-  { id: 'square-open', name: 'Square Open', ffmpegName: 'rectcrop', durationSeconds: 1, family: 'circle', previewKind: 'square-open' },
+  { id: 'rect-crop', name: 'Rect Crop', ffmpegName: 'rectcrop', durationSeconds: 1, family: 'circle', previewKind: 'rect-crop' },
   { id: 'vertical-open', name: 'Vertical Blinds Open', ffmpegName: 'vertopen', durationSeconds: 1, family: 'slice', previewKind: 'vertical-open' },
   { id: 'vertical-close', name: 'Vertical Blinds Close', ffmpegName: 'vertclose', durationSeconds: 1, family: 'slice', previewKind: 'vertical-close' },
   { id: 'horizontal-open', name: 'Horizontal Blinds Open', ffmpegName: 'horzopen', durationSeconds: 1, family: 'slice', previewKind: 'horizontal-open' },
@@ -99,24 +98,12 @@ export const TRANSITION_CATALOG = [
 
   // —— Wind & blur ——
   { id: 'blur', name: 'Blur Crossfade', ffmpegName: 'hblur', durationSeconds: 1, family: 'fade', previewKind: 'blur' },
-  { id: 'smoke-blur', name: 'Smoke Blur', ffmpegName: 'hblur', durationSeconds: 1.2, family: 'stylized', previewKind: 'smoke-blur' },
   { id: 'wind-left', name: 'Wind Left', ffmpegName: 'hlwind', durationSeconds: 1, family: 'wind', previewKind: 'wind-left' },
   { id: 'wind-right', name: 'Wind Right', ffmpegName: 'hrwind', durationSeconds: 1, family: 'wind', previewKind: 'wind-right' },
   { id: 'wind-up', name: 'Wind Up', ffmpegName: 'vuwind', durationSeconds: 1, family: 'wind', previewKind: 'wind-up' },
   { id: 'wind-down', name: 'Wind Down', ffmpegName: 'vdwind', durationSeconds: 1, family: 'wind', previewKind: 'wind-down' },
   { id: 'pixelize', name: 'Pixelize', ffmpegName: 'pixelize', durationSeconds: 1, family: 'stylized', previewKind: 'pixelize' },
-  { id: 'vhs-glitch', name: 'VHS Glitch', ffmpegName: 'pixelize', durationSeconds: 0.8, family: 'stylized', previewKind: 'vhs-glitch' },
-
-  // —— Stylized cinematic (preview-enhanced) ——
-  { id: 'film-burn', name: 'Film Burn', ffmpegName: 'fadewhite', durationSeconds: 1.2, family: 'stylized', previewKind: 'film-burn' },
-  { id: 'film-burn-dark', name: 'Film Burn Dark', ffmpegName: 'fadeblack', durationSeconds: 1.2, family: 'stylized', previewKind: 'film-burn-dark' },
-  { id: 'smoke-dissolve', name: 'Smoke Dissolve', ffmpegName: 'dissolve', durationSeconds: 1.3, family: 'stylized', previewKind: 'smoke-dissolve' },
-  { id: 'color-swipe-gold', name: 'Gold Color Swipe', ffmpegName: 'smoothleft', durationSeconds: 1.1, family: 'stylized', previewKind: 'color-swipe-gold' },
-  { id: 'color-swipe-cyan', name: 'Cyan Color Swipe', ffmpegName: 'smoothright', durationSeconds: 1.1, family: 'stylized', previewKind: 'color-swipe-cyan' },
-  { id: 'color-swipe-magenta', name: 'Magenta Color Swipe', ffmpegName: 'smoothup', durationSeconds: 1.1, family: 'stylized', previewKind: 'color-swipe-magenta' },
-  { id: 'color-swipe-lime', name: 'Lime Color Swipe', ffmpegName: 'smoothdown', durationSeconds: 1.1, family: 'stylized', previewKind: 'color-swipe-lime' },
-  { id: 'color-swipe-red', name: 'Red Color Swipe', ffmpegName: 'wipeleft', durationSeconds: 1, family: 'stylized', previewKind: 'color-swipe-red' },
-  { id: 'color-swipe-blue', name: 'Blue Color Swipe', ffmpegName: 'wiperight', durationSeconds: 1, family: 'stylized', previewKind: 'color-swipe-blue' }
+  { id: 'vhs-glitch', name: 'VHS Glitch', ffmpegName: 'pixelize', durationSeconds: 0.8, family: 'stylized', previewKind: 'vhs-glitch' }
 ] as const satisfies readonly TransitionDefinition[]
 
 export type TransitionId = (typeof TRANSITION_CATALOG)[number]['id']

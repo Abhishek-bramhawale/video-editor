@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useImageUpload } from '@renderer/hooks/useImageUpload'
 import { useProjectStore } from '@renderer/stores/projectStore'
+import { useUiStore } from '@renderer/stores/uiStore'
 import { getEffect } from '@renderer/lib/effects'
 import { getTransition } from '@renderer/lib/transitions'
 
@@ -9,9 +10,20 @@ export function ImageUploadPanel(): React.JSX.Element {
   const removeImage = useProjectStore((s) => s.removeImage)
   const reorderImages = useProjectStore((s) => s.reorderImages)
   const randomizeEffects = useProjectStore((s) => s.randomizeEffects)
+  const imageThumbMin = useUiStore((s) => s.imageThumbMin)
+  const adjustImageThumbMin = useUiStore((s) => s.adjustImageThumbMin)
   const { browseImages, handleDrop, error, clearError, isLoading } = useImageUpload()
   const [dragOver, setDragOver] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
+
+  const onWheelZoom = useCallback(
+    (e: React.WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      adjustImageThumbMin(e.deltaY < 0 ? 12 : -12)
+    },
+    [adjustImageThumbMin]
+  )
 
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -43,7 +55,28 @@ export function ImageUploadPanel(): React.JSX.Element {
             {images.length} image{images.length !== 1 ? 's' : ''} loaded
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {images.length > 0 && (
+            <div className="flex items-center gap-1 rounded-lg bg-surface-800 px-2 py-1 ring-1 ring-surface-600">
+              <button
+                type="button"
+                onClick={() => adjustImageThumbMin(-12)}
+                className="rounded px-2 py-1 text-sm text-zinc-300 hover:bg-surface-700"
+                title="Smaller thumbnails (Ctrl+scroll)"
+              >
+                −
+              </button>
+              <span className="min-w-[3rem] text-center text-xs text-zinc-400">{imageThumbMin}px</span>
+              <button
+                type="button"
+                onClick={() => adjustImageThumbMin(12)}
+                className="rounded px-2 py-1 text-sm text-zinc-300 hover:bg-surface-700"
+                title="Larger thumbnails (Ctrl+scroll)"
+              >
+                +
+              </button>
+            </div>
+          )}
           {images.length > 0 && (
             <button
               type="button"
@@ -74,7 +107,10 @@ export function ImageUploadPanel(): React.JSX.Element {
       )}
 
       {/* Drop zone + image grid share one scroll area — scroll up to hide drop zone and see more images */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+        onWheel={onWheelZoom}
+      >
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
           onDragLeave={() => setDragOver(false)}
@@ -93,7 +129,12 @@ export function ImageUploadPanel(): React.JSX.Element {
         </div>
 
         {images.length > 0 && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 pb-2">
+          <div
+            className="grid gap-3 pb-2"
+            style={{
+              gridTemplateColumns: `repeat(auto-fill, minmax(${imageThumbMin}px, 1fr))`
+            }}
+          >
             {images.map((img, index) => (
               <div
                 key={img.id}

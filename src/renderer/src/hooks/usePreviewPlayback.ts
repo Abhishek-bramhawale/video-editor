@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getEffect } from '@renderer/lib/effects'
-import { getTransition } from '@renderer/lib/transitions'
 import { computeTotalFromDurations } from '@renderer/lib/duration'
 import { useProjectStore } from '@renderer/stores/projectStore'
-import { DEFAULT_TRANSITION_SECONDS } from '@renderer/types'
 
 export interface PlaybackState {
   isPlaying: boolean
@@ -17,7 +15,8 @@ export interface PlaybackState {
 
 function findSegmentAtTime(
   time: number,
-  durations: number[]
+  durations: number[],
+  transitionSeconds: number
 ): { index: number; localT: number; inTransition: boolean; transitionT: number } {
   if (durations.length === 0) {
     return { index: 0, localT: 0, inTransition: false, transitionT: 0 }
@@ -30,15 +29,15 @@ function findSegmentAtTime(
     const segEnd = segStart + perImage
     if (time < segEnd || i === durations.length - 1) {
       const localT = Math.max(0, Math.min(1, (time - segStart) / perImage))
-      const transitionStart = segEnd - DEFAULT_TRANSITION_SECONDS
+      const transitionStart = segEnd - transitionSeconds
       const inTransition =
         i < durations.length - 1 && time >= transitionStart && time < segEnd
       const transitionT = inTransition
-        ? (time - transitionStart) / DEFAULT_TRANSITION_SECONDS
+        ? (time - transitionStart) / transitionSeconds
         : 0
       return { index: i, localT, inTransition, transitionT }
     }
-    elapsed = segEnd - DEFAULT_TRANSITION_SECONDS
+    elapsed = segEnd - transitionSeconds
   }
 
   return { index: durations.length - 1, localT: 1, inTransition: false, transitionT: 0 }
@@ -54,12 +53,16 @@ export function usePreviewPlayback(): {
 } {
   const images = useProjectStore((s) => s.images)
   const targetDuration = useProjectStore((s) => s.targetDurationSeconds)
+  const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const fps = useProjectStore((s) => s.exportSettings.fps)
   const durations = images.map((img) => img.durationSeconds)
   const totalDuration =
-    durations.length > 0 ? computeTotalFromDurations(durations) : targetDuration
+    durations.length > 0
+      ? computeTotalFromDurations(durations, transitionSeconds)
+      : targetDuration
 
   const quantStep = fps > 0 ? 1 / fps : 0
+  const epsilonSeconds = quantStep > 0 ? quantStep / 2 : 0
   const quantize = (time: number): number => {
     if (quantStep <= 0) return time
     return Math.round(time / quantStep) * quantStep
@@ -113,9 +116,9 @@ export function usePreviewPlayback(): {
 
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [isPlaying, totalDuration])
+  }, [isPlaying, totalDuration, quantStep])
 
-  const segment = findSegmentAtTime(currentTime, durations)
+  const segment = findSegmentAtTime(currentTime, durations, transitionSeconds)
   const currentImage = images[segment.index]
 
   const getTransform = useCallback(() => {

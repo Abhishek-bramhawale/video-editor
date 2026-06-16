@@ -19,22 +19,61 @@ function formatTime(seconds: number): string {
 export function DurationPanel(): React.JSX.Element {
   const targetDurationSeconds = useProjectStore((s) => s.targetDurationSeconds)
   const perImageDurationSeconds = useProjectStore((s) => s.perImageDurationSeconds)
+  const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const durationMode = useProjectStore((s) => s.durationMode)
   const setTargetDurationSeconds = useProjectStore((s) => s.setTargetDurationSeconds)
   const setPerImageDurationSeconds = useProjectStore((s) => s.setPerImageDurationSeconds)
+  const setTransitionSeconds = useProjectStore((s) => s.setTransitionSeconds)
   const imageCount = useProjectStore((s) => s.images.length)
   const perImage = usePerImageDuration()
 
   const totalMinutes = Math.floor(targetDurationSeconds / 60)
   const totalSeconds = targetDurationSeconds % 60
-  const estimatedTotal = computeTotalFromPerImage(perImageDurationSeconds, imageCount)
+  const estimatedTotal = computeTotalFromPerImage(
+    perImageDurationSeconds,
+    imageCount,
+    transitionSeconds
+  )
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-4">
       <h2 className="mb-1 text-base font-semibold text-white">Duration</h2>
       <p className="mb-4 text-sm text-zinc-400">
-        Set time per image or the final video length. Transitions overlap by 1s between clips.
+        Set time per image, total video length, and how long transitions overlap between clips.
       </p>
+
+      <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
+        <h3 className="mb-1 text-sm font-semibold text-white">Transition overlap</h3>
+        <p className="mb-3 text-xs text-zinc-500">
+          How long each transition blends between images (export &amp; preview).
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {[0.5, 1, 1.5, 2].map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              onClick={() => setTransitionSeconds(sec)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                transitionSeconds === sec
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-700 text-zinc-300 hover:bg-surface-600'
+              }`}
+            >
+              {sec}s
+            </button>
+          ))}
+          <input
+            type="number"
+            min={0.1}
+            max={3}
+            step={0.1}
+            value={Number(transitionSeconds.toFixed(1))}
+            onChange={(e) => setTransitionSeconds(parseFloat(e.target.value) || 0.5)}
+            className="w-20 rounded-lg border border-surface-600 bg-surface-700 px-2 py-1.5 text-center text-white"
+          />
+          <span className="text-sm text-zinc-500">sec</span>
+        </div>
+      </section>
 
       <div className="grid max-w-3xl gap-4 md:grid-cols-2">
         <section
@@ -157,6 +196,10 @@ export function DurationPanel(): React.JSX.Element {
           <div className="flex justify-between">
             <span className="text-zinc-400">Images</span>
             <span className="text-white">{imageCount}</span>
+          </div>
+          <div className="mt-2 flex justify-between">
+            <span className="text-zinc-400">Transition overlap</span>
+            <span className="text-white">{transitionSeconds.toFixed(1)}s</span>
           </div>
           <div className="mt-2 flex justify-between">
             <span className="text-zinc-400">Per image</span>
