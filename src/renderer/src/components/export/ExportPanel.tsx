@@ -43,7 +43,7 @@ export function ExportPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col p-6">
+    <div className="flex h-full flex-col overflow-y-auto p-4">
       <h2 className="mb-1 text-lg font-semibold text-white">Export Video</h2>
       <p className="mb-6 text-sm text-zinc-400">
         Render cinematic slideshow with FFmpeg — hardware acceleration enabled when available.

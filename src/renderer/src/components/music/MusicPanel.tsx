@@ -30,7 +30,7 @@ export function MusicPanel(): React.JSX.Element {
   const removeAudio = (): void => setAudio(null)
 
   return (
-    <div className="flex h-full flex-col p-6">
+    <div className="flex h-full flex-col overflow-y-auto p-4">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Background Music</h2>

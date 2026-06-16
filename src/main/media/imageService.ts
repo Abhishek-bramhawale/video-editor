@@ -39,7 +39,15 @@ export async function getImageMetadata(filePath: string): Promise<ImageMetadata>
 
   const image = nativeImage.createFromPath(filePath)
   const size = image.getSize()
-  const thumbnail = image.resize({ width: 200, height: 200, quality: 'good' })
+  // Used for timeline + preview. Keep it fairly large so preview doesn't look blurry.
+  // (This is still much cheaper than decoding full-size in the renderer.)
+  const maxSide = 1600
+  const w = size.width || 1920
+  const h = size.height || 1080
+  const scale = Math.min(1, maxSide / Math.max(w, h))
+  const thumbW = Math.max(320, Math.round(w * scale))
+  const thumbH = Math.max(180, Math.round(h * scale))
+  const thumbnail = image.resize({ width: thumbW, height: thumbH, quality: 'good' })
   const thumbnailUrl = thumbnail.toDataURL()
 
   return {

@@ -85,6 +85,9 @@ export interface ExportSettings {
   fps: number
 }
 
+/** How slideshow timing is controlled */
+export type DurationMode = 'per-image' | 'total'
+
 /** Serializable project file */
 export interface ProjectData {
   version: 1
@@ -92,13 +95,15 @@ export interface ProjectData {
   createdAt: string
   updatedAt: string
   targetDurationSeconds: number
+  durationMode?: DurationMode
+  perImageDurationSeconds?: number
   images: SlideshowImage[]
   audio: AudioTrack | null
   exportSettings: ExportSettings
 }
 
 /** App-wide UI state */
-export type AppPanel = 'images' | 'duration' | 'music' | 'preview' | 'export'
+export type AppPanel = 'images' | 'duration' | 'music' | 'export'
 
 export interface ImageMetadata {
   filePath: string

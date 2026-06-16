@@ -35,7 +35,7 @@ export function ImageUploadPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col p-6">
+    <div className="flex h-full flex-col overflow-y-auto p-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Images</h2>

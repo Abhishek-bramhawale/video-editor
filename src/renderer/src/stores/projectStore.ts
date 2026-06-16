@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   AppPanel,
   AudioTrack,
+  DurationMode,
   ExportSettings,
   SlideshowImage
 } from '@renderer/types'
@@ -10,6 +11,10 @@ import {
   DEFAULT_TARGET_DURATION_SECONDS,
   DEFAULT_TRANSITION_SECONDS
 } from '@renderer/types'
+import {
+  computePerImageFromTotal,
+  computeTotalFromPerImage
+} from '@renderer/lib/duration'
 import { slideshowRandomizer } from '@renderer/lib/randomizer'
 
 interface ProjectState {
@@ -17,6 +22,8 @@ interface ProjectState {
   activePanel: AppPanel
   images: SlideshowImage[]
   targetDurationSeconds: number
+  durationMode: DurationMode
+  perImageDurationSeconds: number
   audio: AudioTrack | null
   exportSettings: ExportSettings
   isDirty: boolean
@@ -24,6 +31,7 @@ interface ProjectState {
   setActivePanel: (panel: AppPanel) => void
   setProjectName: (name: string) => void
   setTargetDurationSeconds: (seconds: number) => void
+  setPerImageDurationSeconds: (seconds: number) => void
   addImages: (images: SlideshowImage[]) => void
   removeImage: (id: string) => void
   reorderImages: (fromIndex: number, toIndex: number) => void
@@ -33,6 +41,8 @@ interface ProjectState {
   loadProject: (data: {
     name: string
     targetDurationSeconds: number
+    durationMode?: DurationMode
+    perImageDurationSeconds?: number
     images: SlideshowImage[]
     audio: AudioTrack | null
     exportSettings: ExportSettings
@@ -45,20 +55,43 @@ function normalizeOrders(images: SlideshowImage[]): SlideshowImage[] {
   return images.map((img, index) => ({ ...img, order: index }))
 }
 
-function applyDurations(images: SlideshowImage[], targetSeconds: number): SlideshowImage[] {
-  if (images.length === 0) return images
-  const perImage =
-    images.length === 1
-      ? targetSeconds
-      : (targetSeconds + (images.length - 1) * DEFAULT_TRANSITION_SECONDS) / images.length
+function applyPerImageToImages(
+  images: SlideshowImage[],
+  perImage: number
+): SlideshowImage[] {
   return images.map((img) => ({ ...img, durationSeconds: perImage }))
 }
+
+function syncFromTotal(
+  images: SlideshowImage[],
+  targetSeconds: number
+): { images: SlideshowImage[]; perImageDurationSeconds: number } {
+  const perImage = computePerImageFromTotal(targetSeconds, images.length)
+  return {
+    images: applyPerImageToImages(images, perImage),
+    perImageDurationSeconds: perImage
+  }
+}
+
+function syncFromPerImage(
+  images: SlideshowImage[],
+  perImage: number
+): { images: SlideshowImage[]; targetDurationSeconds: number } {
+  return {
+    images: applyPerImageToImages(images, perImage),
+    targetDurationSeconds: computeTotalFromPerImage(perImage, images.length)
+  }
+}
+
+const defaultPerImage = computePerImageFromTotal(DEFAULT_TARGET_DURATION_SECONDS, 1)
 
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
   images: [] as SlideshowImage[],
   targetDurationSeconds: DEFAULT_TARGET_DURATION_SECONDS,
+  durationMode: 'total' as DurationMode,
+  perImageDurationSeconds: defaultPerImage,
   audio: null as AudioTrack | null,
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
   isDirty: false
@@ -73,18 +106,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setTargetDurationSeconds: (seconds) => {
     const target = Math.max(1, seconds)
-    set((state) => ({
-      targetDurationSeconds: target,
-      images: applyDurations(state.images, target),
-      isDirty: true
-    }))
+    set((state) => {
+      const synced = syncFromTotal(state.images, target)
+      return {
+        durationMode: 'total',
+        targetDurationSeconds: target,
+        perImageDurationSeconds: synced.perImageDurationSeconds,
+        images: synced.images,
+        isDirty: true
+      }
+    })
+  },
+
+  setPerImageDurationSeconds: (seconds) => {
+    const perImage = Math.max(0.1, seconds)
+    set((state) => {
+      const synced = syncFromPerImage(state.images, perImage)
+      return {
+        durationMode: 'per-image',
+        perImageDurationSeconds: perImage,
+        targetDurationSeconds: synced.targetDurationSeconds,
+        images: synced.images,
+        isDirty: true
+      }
+    })
   },
 
   addImages: (newImages) => {
     set((state) => {
       const combined = normalizeOrders([...state.images, ...newImages])
+      if (state.durationMode === 'per-image') {
+        const synced = syncFromPerImage(combined, state.perImageDurationSeconds)
+        return { ...synced, images: synced.images, isDirty: true }
+      }
+      const synced = syncFromTotal(combined, state.targetDurationSeconds)
       return {
-        images: applyDurations(combined, state.targetDurationSeconds),
+        images: synced.images,
+        perImageDurationSeconds: synced.perImageDurationSeconds,
         isDirty: true
       }
     })
@@ -94,8 +152,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   removeImage: (id) => {
     set((state) => {
       const filtered = normalizeOrders(state.images.filter((img) => img.id !== id))
+      if (state.durationMode === 'per-image') {
+        const synced = syncFromPerImage(filtered, state.perImageDurationSeconds)
+        return { ...synced, isDirty: true }
+      }
+      const synced = syncFromTotal(filtered, state.targetDurationSeconds)
       return {
-        images: applyDurations(filtered, state.targetDurationSeconds),
+        images: synced.images,
+        perImageDurationSeconds: synced.perImageDurationSeconds,
         isDirty: true
       }
     })
@@ -135,10 +199,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   loadProject: (data) => {
     slideshowRandomizer.reset()
+    const images = normalizeOrders(data.images)
+    const durationMode = data.durationMode ?? 'total'
+    const perImage =
+      data.perImageDurationSeconds ??
+      (images[0]?.durationSeconds || computePerImageFromTotal(data.targetDurationSeconds, images.length))
+
     set({
       projectName: data.name,
+      durationMode,
+      perImageDurationSeconds: perImage,
       targetDurationSeconds: data.targetDurationSeconds,
-      images: applyDurations(normalizeOrders(data.images), data.targetDurationSeconds),
+      images:
+        durationMode === 'per-image'
+          ? applyPerImageToImages(images, perImage)
+          : syncFromTotal(images, data.targetDurationSeconds).images,
       audio: data.audio,
       exportSettings: data.exportSettings,
       isDirty: false
@@ -155,13 +230,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
 export function usePerImageDuration(): number {
   const images = useProjectStore((s) => s.images)
-  const targetDurationSeconds = useProjectStore((s) => s.targetDurationSeconds)
-  if (images.length === 0) return 0
-  if (images.length === 1) return targetDurationSeconds
-  return (
-    (targetDurationSeconds + (images.length - 1) * DEFAULT_TRANSITION_SECONDS) /
-    images.length
-  )
+  const perImageDurationSeconds = useProjectStore((s) => s.perImageDurationSeconds)
+  if (images.length === 0) return perImageDurationSeconds
+  return images[0].durationSeconds
 }
 
 export function buildProjectData(): import('@renderer/types').ProjectData {
@@ -173,6 +244,8 @@ export function buildProjectData(): import('@renderer/types').ProjectData {
     createdAt: now,
     updatedAt: now,
     targetDurationSeconds: state.targetDurationSeconds,
+    durationMode: state.durationMode,
+    perImageDurationSeconds: state.perImageDurationSeconds,
     images: state.images,
     audio: state.audio,
     exportSettings: state.exportSettings

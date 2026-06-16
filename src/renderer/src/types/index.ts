@@ -5,6 +5,7 @@ export type {
   ExportResolution,
   KenBurnsEffectId,
   TransitionId,
+  DurationMode,
   SlideshowImage,
   AudioTrack,
   ExportSettings,

@@ -3,7 +3,6 @@ import type { ExportRequest, RenderProgress } from '../../shared/types'
 import { DEFAULT_TRANSITION_SECONDS } from '../../shared/types'
 import {
   buildSlideshowFilterComplex,
-  computePerImageDuration,
   getCodecArgs,
   getResolution
 } from './filterGraph'
@@ -42,12 +41,10 @@ export async function renderSlideshow(
   const { width, height } = getResolution(project.exportSettings.resolution)
   const fps = project.exportSettings.fps
   const transitionSeconds = DEFAULT_TRANSITION_SECONDS
-  const computedPerImageDuration = computePerImageDuration(
-    project.targetDurationSeconds,
-    images.length,
-    transitionSeconds
+  const perImageDuration = Math.max(
+    1 / Math.max(1, fps),
+    images[0]?.durationSeconds ?? project.targetDurationSeconds
   )
-  const perImageDuration = Math.max(1 / Math.max(1, fps), computedPerImageDuration)
   const durationStr = perImageDuration.toFixed(3)
 
   const { vcodec, extra } = getCodecArgs(project.exportSettings.codec)
