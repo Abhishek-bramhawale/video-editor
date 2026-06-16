@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   ExportRequest,
@@ -10,6 +10,8 @@ import type {
 
 const slideshowApi = {
   platform: process.platform,
+
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('ffmpeg:check'),
 

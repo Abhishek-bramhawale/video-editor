@@ -12,7 +12,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle('ffmpeg:check', () => checkFfmpeg())
 
   ipcMain.handle('dialog:selectImages', async () => {
-    const result = await dialog.showOpenDialog({
+    const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
       title: 'Select Images',
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
       properties: ['openFile', 'multiSelections']
@@ -22,7 +22,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   })
 
   ipcMain.handle('dialog:selectAudio', async () => {
-    const result = await dialog.showOpenDialog({
+    const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
       title: 'Select Audio',
       filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a'] }],
       properties: ['openFile']
@@ -33,7 +33,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   })
 
   ipcMain.handle('dialog:selectExportPath', async (_e, defaultName: string) => {
-    const result = await dialog.showSaveDialog({
+    const result = await dialog.showSaveDialog(getWindow() ?? undefined, {
       title: 'Export Video',
       defaultPath: defaultName,
       filters: [

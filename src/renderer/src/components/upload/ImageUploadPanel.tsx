@@ -9,7 +9,7 @@ export function ImageUploadPanel(): React.JSX.Element {
   const removeImage = useProjectStore((s) => s.removeImage)
   const reorderImages = useProjectStore((s) => s.reorderImages)
   const randomizeEffects = useProjectStore((s) => s.randomizeEffects)
-  const { browseImages, handleDrop } = useImageUpload()
+  const { browseImages, handleDrop, error, clearError, isLoading } = useImageUpload()
   const [dragOver, setDragOver] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 
@@ -56,12 +56,22 @@ export function ImageUploadPanel(): React.JSX.Element {
           <button
             type="button"
             onClick={browseImages}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+            disabled={isLoading}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            Browse Images
+            {isLoading ? 'Loading…' : 'Browse Images'}
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-400 ring-1 ring-red-500/30">
+          <span>{error}</span>
+          <button type="button" onClick={clearError} className="ml-3 text-red-300 hover:text-white">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
