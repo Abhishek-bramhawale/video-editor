@@ -1,5 +1,6 @@
 import { useProjectStore } from '@renderer/stores/projectStore'
 import { useProjectIO } from '@renderer/hooks/useProjectIO'
+import { useUiStore } from '@renderer/stores/uiStore'
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -13,6 +14,7 @@ export function Header(): React.JSX.Element {
   const imageCount = useProjectStore((s) => s.images.length)
   const targetDurationSeconds = useProjectStore((s) => s.targetDurationSeconds)
   const { saveProject, openProject, newProject } = useProjectIO()
+  const resetLayout = useUiStore((s) => s.resetLayout)
 
   return (
     <header className="flex items-center justify-between border-b border-surface-600 bg-surface-800 px-5 py-2.5">
@@ -30,6 +32,14 @@ export function Header(): React.JSX.Element {
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={resetLayout}
+          className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 hover:bg-surface-700 hover:text-zinc-200"
+          title="Reset panel sizes to default"
+        >
+          Reset layout
+        </button>
         <button
           type="button"
           onClick={newProject}

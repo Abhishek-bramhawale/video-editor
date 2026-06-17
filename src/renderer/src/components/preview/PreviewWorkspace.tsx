@@ -1,24 +1,35 @@
+import { useCallback, useMemo } from 'react'
 import { usePreviewPlayback } from '@renderer/hooks/usePreviewPlayback'
 import { getTransitionPreviewStyles } from '@renderer/lib/transitions/preview'
 import { useProjectStore } from '@renderer/stores/projectStore'
 import { useUiStore } from '@renderer/stores/uiStore'
 import { Timeline } from '@renderer/components/timeline/Timeline'
 import { ResizeHandle } from '@renderer/components/layout/ResizeHandle'
-import { useCallback } from 'react'
+import {
+  clampTimelineHeight,
+  clampPreviewSectionHeight
+} from '@renderer/lib/layout/bounds'
 
 export function PreviewWorkspace(): React.JSX.Element {
   const images = useProjectStore((s) => s.images)
   const reorderImages = useProjectStore((s) => s.reorderImages)
   const removeImage = useProjectStore((s) => s.removeImage)
+  const previewHeight = useUiStore((s) => s.previewHeight)
   const timelineHeight = useUiStore((s) => s.timelineHeight)
   const setTimelineHeight = useUiStore((s) => s.setTimelineHeight)
   const { state, toggle, seek, getTransform } = usePreviewPlayback()
 
+  const effectivePreviewHeight = clampPreviewSectionHeight(previewHeight)
+  const effectiveTimelineHeight = useMemo(
+    () => clampTimelineHeight(timelineHeight, effectivePreviewHeight),
+    [timelineHeight, effectivePreviewHeight]
+  )
+
   const onResizeTimeline = useCallback(
     (deltaY: number) => {
-      setTimelineHeight(timelineHeight - deltaY)
+      setTimelineHeight(effectiveTimelineHeight - deltaY)
     },
-    [timelineHeight, setTimelineHeight]
+    [effectiveTimelineHeight, setTimelineHeight]
   )
 
   const currentImage = images[state.currentImageIndex]
@@ -31,9 +42,9 @@ export function PreviewWorkspace(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3">
-        <div className="relative mx-auto flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
-          <div className="relative h-full aspect-video overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3" style={{ minHeight: 0 }}>
+        <div className="relative mx-auto flex min-h-[100px] w-full flex-1 items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
+          <div className="relative max-h-full max-w-full aspect-video overflow-hidden">
             {images.length === 0 ? (
               <div className="text-center">
                 <p className="text-base font-medium text-white">Preview</p>
@@ -104,7 +115,7 @@ export function PreviewWorkspace(): React.JSX.Element {
       </div>
 
       <ResizeHandle onResize={onResizeTimeline} />
-      <div className="shrink-0 overflow-hidden" style={{ height: timelineHeight }}>
+      <div className="shrink-0 overflow-hidden" style={{ height: effectiveTimelineHeight }}>
         <Timeline
           currentTime={state.currentTime}
           totalDuration={state.totalDuration}

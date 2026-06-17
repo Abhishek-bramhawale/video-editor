@@ -1,5 +1,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import {
+  clampPreviewSectionHeight,
+  clampTimelineHeight,
+  clampImageThumbMin,
+  DEFAULT_PREVIEW_HEIGHT,
+  DEFAULT_TIMELINE_HEIGHT
+} from '@renderer/lib/layout/bounds'
 
 interface UiState {
   previewHeight: number
@@ -9,25 +16,50 @@ interface UiState {
   setTimelineHeight: (height: number) => void
   setImageThumbMin: (size: number) => void
   adjustImageThumbMin: (delta: number) => void
+  resetLayout: () => void
 }
 
 export const useUiStore = create<UiState>()(
   persist(
     (set, get) => ({
-      previewHeight: 360,
-      timelineHeight: 200,
+      previewHeight: DEFAULT_PREVIEW_HEIGHT,
+      timelineHeight: DEFAULT_TIMELINE_HEIGHT,
       imageThumbMin: 120,
-      setPreviewHeight: (height) =>
-        set({ previewHeight: Math.max(200, Math.min(720, height)) }),
-      setTimelineHeight: (height) =>
-        set({ timelineHeight: Math.max(120, Math.min(400, height)) }),
-      setImageThumbMin: (size) =>
-        set({ imageThumbMin: Math.max(72, Math.min(240, size)) }),
+      setPreviewHeight: (height) => {
+        const previewHeight = clampPreviewSectionHeight(height)
+        const timelineHeight = clampTimelineHeight(get().timelineHeight, previewHeight)
+        set({ previewHeight, timelineHeight })
+      },
+      setTimelineHeight: (height) => {
+        const previewHeight = clampPreviewSectionHeight(get().previewHeight)
+        set({
+          timelineHeight: clampTimelineHeight(height, previewHeight)
+        })
+      },
+      setImageThumbMin: (size) => set({ imageThumbMin: clampImageThumbMin(size) }),
       adjustImageThumbMin: (delta) => {
         const next = get().imageThumbMin + delta
-        set({ imageThumbMin: Math.max(72, Math.min(240, next)) })
-      }
+        set({ imageThumbMin: clampImageThumbMin(next) })
+      },
+      resetLayout: () =>
+        set({
+          previewHeight: DEFAULT_PREVIEW_HEIGHT,
+          timelineHeight: DEFAULT_TIMELINE_HEIGHT,
+          imageThumbMin: 120
+        })
     }),
-    { name: 'cinematic-slideshow-ui' }
+    {
+      name: 'cinematic-slideshow-ui',
+      version: 1,
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        queueMicrotask(() => {
+          const previewHeight = clampPreviewSectionHeight(state.previewHeight)
+          const timelineHeight = clampTimelineHeight(state.timelineHeight, previewHeight)
+          const imageThumbMin = clampImageThumbMin(state.imageThumbMin)
+          useUiStore.setState({ previewHeight, timelineHeight, imageThumbMin })
+        })
+      }
+    }
   )
 )
