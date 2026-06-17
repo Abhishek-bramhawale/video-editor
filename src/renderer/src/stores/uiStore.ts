@@ -54,9 +54,14 @@ export const useUiStore = create<UiState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         queueMicrotask(() => {
-          const previewHeight = clampPreviewSectionHeight(state.previewHeight)
-          const timelineHeight = clampTimelineHeight(state.timelineHeight, previewHeight)
-          const imageThumbMin = clampImageThumbMin(state.imageThumbMin)
+          const previewHeight = clampPreviewSectionHeight(
+            state.previewHeight ?? DEFAULT_PREVIEW_HEIGHT
+          )
+          const timelineHeight = clampTimelineHeight(
+            state.timelineHeight ?? DEFAULT_TIMELINE_HEIGHT,
+            previewHeight
+          )
+          const imageThumbMin = clampImageThumbMin(state.imageThumbMin ?? 120)
           useUiStore.setState({ previewHeight, timelineHeight, imageThumbMin })
         })
       }

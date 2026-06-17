@@ -1,4 +1,4 @@
-import { useProjectStore } from '@renderer/stores/projectStore'
+import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import { DEFAULT_AUDIO_FADE_SECONDS } from '@renderer/types'
 
 function formatTime(seconds: number): string {
@@ -10,7 +10,7 @@ function formatTime(seconds: number): string {
 export function MusicPanel(): React.JSX.Element {
   const audio = useProjectStore((s) => s.audio)
   const setAudio = useProjectStore((s) => s.setAudio)
-  const targetDuration = useProjectStore((s) => s.targetDurationSeconds)
+  const timelineDuration = useTimelineTotalDuration()
 
   const selectAudio = async (): Promise<void> => {
     const path = await window.slideshow.selectAudio()
@@ -34,7 +34,9 @@ export function MusicPanel(): React.JSX.Element {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Background Music</h2>
-          <p className="text-sm text-zinc-400">MP3, WAV, or M4A — auto-trimmed to video length</p>
+          <p className="text-sm text-zinc-400">
+            MP3, WAV, or M4A — trimmed to timeline length (never shortens your clips)
+          </p>
         </div>
         <button
           type="button"
@@ -72,8 +74,12 @@ export function MusicPanel(): React.JSX.Element {
 
           <div className="mt-4 space-y-2 border-t border-surface-600 pt-4 text-sm">
             <div className="flex justify-between">
-              <span className="text-zinc-400">Trim to video</span>
-              <span className="text-white">{formatTime(targetDuration)}</span>
+              <span className="text-zinc-400">Timeline length</span>
+              <span className="text-white">{formatTime(timelineDuration)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Music trimmed to</span>
+              <span className="text-white">{formatTime(timelineDuration)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-zinc-400">Fade in</span>

@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import type { ExportRequest, ProjectData, RenderProgress } from '../../shared/types'
 import { checkFfmpeg, renderSlideshow } from '../ffmpeg/renderer'
 import { getAudioMetadata, getImageMetadata, isAudioFile, isImageFile } from '../media/imageService'
+import { getVideoMetadata, isVideoFile } from '../media/videoService'
 import { openProjectFromFile, saveProjectToFile } from '../project/projectService'
 
 function sendProgress(window: BrowserWindow | null, progress: RenderProgress): void {
@@ -10,6 +11,16 @@ function sendProgress(window: BrowserWindow | null, progress: RenderProgress): v
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('ffmpeg:check', () => checkFfmpeg())
+
+  ipcMain.handle('dialog:selectVideos', async () => {
+    const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
+      title: 'Select Videos',
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'webm', 'mkv'] }],
+      properties: ['openFile', 'multiSelections']
+    })
+    if (result.canceled) return []
+    return result.filePaths.filter(isVideoFile)
+  })
 
   ipcMain.handle('dialog:selectImages', async () => {
     const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
@@ -43,6 +54,10 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     })
     if (result.canceled || !result.filePath) return null
     return result.filePath
+  })
+
+  ipcMain.handle('media:getVideoMetadata', async (_e, filePath: string) => {
+    return getVideoMetadata(filePath)
   })
 
   ipcMain.handle('media:getImageMetadata', async (_e, filePath: string) => {

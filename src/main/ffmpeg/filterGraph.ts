@@ -30,7 +30,6 @@ const EFFECT_FFMPEG: Record<
   parallax: { zoom: [1.1, 1.18], panX: [-35, 35], panY: [20, -20] }
 }
 
-
 export function buildZoompanFilter(
   effectId: KenBurnsEffectId,
   width: number,
@@ -39,8 +38,6 @@ export function buildZoompanFilter(
   durationSeconds: number
 ): string {
   const effect = EFFECT_FFMPEG[effectId] ?? EFFECT_FFMPEG['slow-zoom-center']
-  // zoompan expressions below interpolate using a denominator derived from frame count.
-  // Ensure we never end up with 0 (or negative) to avoid invalid filter graphs.
   const frames = Math.max(2, Math.round(durationSeconds * fps))
   const denom = Math.max(1, frames - 1)
   const [z0, z1] = effect.zoom
@@ -58,38 +55,57 @@ export function buildZoompanFilter(
   return `scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,crop=${scaleW}:${scaleH},zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${width}x${height}:fps=${fps}`
 }
 
+function buildScaleCrop(width: number, height: number): string {
+  return `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`
+}
 
-export interface SlideshowClip {
+export interface ExportClip {
+  mediaType: 'video' | 'image'
+  durationSeconds: number
   effectId: KenBurnsEffectId | null
   transitionId: TransitionId | null
 }
 
+function buildClipFilter(
+  clip: ExportClip,
+  width: number,
+  height: number,
+  fps: number
+): string {
+  const d = Math.max(1 / fps, clip.durationSeconds).toFixed(3)
+
+  if (clip.mediaType === 'video') {
+    return `trim=0:${d},setpts=PTS-STARTPTS,${buildScaleCrop(width, height)},fps=${fps}`
+  }
+
+  if (clip.effectId) {
+    return `${buildZoompanFilter(clip.effectId, width, height, fps, clip.durationSeconds)},setpts=PTS-STARTPTS`
+  }
+
+  const frames = Math.max(2, Math.round(clip.durationSeconds * fps))
+  return `${buildScaleCrop(width, height)},loop=loop=${frames}:size=1:start=0,trim=duration=${d},setpts=PTS-STARTPTS,fps=${fps}`
+}
+
 export function buildSlideshowFilterComplex(
-  clips: SlideshowClip[],
+  clips: ExportClip[],
   width: number,
   height: number,
   fps: number,
-  perImageDuration: number,
   transitionSeconds: number,
-  audio?: { inputIndex: number; targetDuration: number; fadeIn: number; fadeOut: number }
+  outputDuration: number,
+  audio?: { inputIndex: number; fadeIn: number; fadeOut: number }
 ): { filterComplex: string; videoLabel: string; audioLabel?: string } {
   const parts: string[] = []
 
   for (let i = 0; i < clips.length; i++) {
-    const vf = buildZoompanFilter(
-      clips[i].effectId ?? 'slow-zoom-center',
-      width,
-      height,
-      fps,
-      perImageDuration
-    )
-    parts.push(`[${i}:v]${vf},setpts=PTS-STARTPTS[v${i}]`)
+    const vf = buildClipFilter(clips[i], width, height, fps)
+    parts.push(`[${i}:v]${vf}[v${i}]`)
   }
 
   let videoLabel = 'v0'
   if (clips.length > 1) {
     let prevLabel = 'v0'
-    let accumulatedDuration = perImageDuration
+    let accumulatedDuration = clips[0].durationSeconds
 
     for (let i = 1; i < clips.length; i++) {
       const xfadeName = getXfadeName(clips[i - 1].transitionId ?? 'crossfade')
@@ -99,17 +115,17 @@ export function buildSlideshowFilterComplex(
         `[${prevLabel}][v${i}]xfade=transition=${xfadeName}:duration=${transitionSeconds}:offset=${offset.toFixed(3)}[${outLabel}]`
       )
       prevLabel = outLabel
-      accumulatedDuration += perImageDuration - transitionSeconds
+      accumulatedDuration += clips[i].durationSeconds - transitionSeconds
     }
     videoLabel = 'vout'
   }
 
   let audioLabel: string | undefined
   if (audio) {
-    const fadeOutStart = Math.max(0, audio.targetDuration - audio.fadeOut)
+    const fadeOutStart = Math.max(0, outputDuration - audio.fadeOut)
     audioLabel = 'aout'
     parts.push(
-      `[${audio.inputIndex}:a]atrim=0:${audio.targetDuration},afade=t=in:st=0:d=${audio.fadeIn},afade=t=out:st=${fadeOutStart}:d=${audio.fadeOut}[${audioLabel}]`
+      `[${audio.inputIndex}:a]atrim=0:${outputDuration.toFixed(3)},afade=t=in:st=0:d=${audio.fadeIn},afade=t=out:st=${fadeOutStart}:d=${audio.fadeOut}[${audioLabel}]`
     )
   }
 
@@ -122,16 +138,6 @@ export function getResolution(resolution: '720p' | '1080p'): { width: number; he
 
 export function getXfadeName(transitionId: string): string {
   return getTransitionFfmpegName(transitionId)
-}
-
-export function computePerImageDuration(
-  targetSeconds: number,
-  imageCount: number,
-  transitionSeconds: number
-): number {
-  if (imageCount <= 0) return 0
-  if (imageCount === 1) return targetSeconds
-  return (targetSeconds + (imageCount - 1) * transitionSeconds) / imageCount
 }
 
 export function getCodecArgs(codec: 'h264' | 'h265' | 'mov'): { vcodec: string; extra: string[] } {

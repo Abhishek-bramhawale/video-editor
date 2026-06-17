@@ -1,6 +1,8 @@
 import { dialog } from 'electron'
 import { writeFile } from 'fs/promises'
 import type { ProjectData } from '../../shared/types'
+import { migrateProjectData } from '../../shared/lib/projectMigrate'
+import { readProjectFile } from '../media/imageService'
 
 export async function saveProjectToFile(data: ProjectData): Promise<string | null> {
   const result = await dialog.showSaveDialog({
@@ -25,8 +27,8 @@ export async function openProjectFromFile(): Promise<{ data: ProjectData; filePa
   if (result.canceled || result.filePaths.length === 0) return null
 
   const filePath = result.filePaths[0]
-  const { readProjectFile } = await import('../media/imageService')
   const raw = await readProjectFile(filePath)
-  const data = JSON.parse(raw) as ProjectData
+  const parsed = JSON.parse(raw) as unknown
+  const data = migrateProjectData(parsed)
   return { data, filePath }
 }

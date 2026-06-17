@@ -4,13 +4,13 @@ import { NAV_ITEMS } from './navItems'
 export function BottomNav(): React.JSX.Element {
   const activePanel = useProjectStore((s) => s.activePanel)
   const setActivePanel = useProjectStore((s) => s.setActivePanel)
-  const imageCount = useProjectStore((s) => s.images.length)
+  const clipCount = useProjectStore((s) => s.clips.length)
 
   return (
     <nav className="flex shrink-0 items-center justify-center gap-1 border-t border-surface-600 bg-surface-800 px-4 py-2">
       {NAV_ITEMS.map((item) => {
         const isActive = activePanel === item.id
-        const badge = item.id === 'images' && imageCount > 0 ? imageCount : null
+        const badge = item.id === 'images' && clipCount > 0 ? clipCount : null
 
         return (
           <button
