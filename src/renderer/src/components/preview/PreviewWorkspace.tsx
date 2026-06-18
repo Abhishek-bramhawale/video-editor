@@ -1,6 +1,8 @@
 import { pathToFileURL } from '@renderer/lib/media/fileUrl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePreviewPlayback } from '@renderer/hooks/usePreviewPlayback'
+import { usePlaybackKeyboard } from '@renderer/hooks/usePlaybackKeyboard'
+import { useAspectFit16x9 } from '@renderer/hooks/useAspectFit16x9'
 import { getTransitionPreviewStyles } from '@renderer/lib/transitions/preview'
 import { useProjectStore } from '@renderer/stores/projectStore'
 import { useUiStore } from '@renderer/stores/uiStore'
@@ -108,6 +110,8 @@ export function PreviewWorkspace(): React.JSX.Element {
   const timelineHeight = useUiStore((s) => s.timelineHeight)
   const setTimelineHeight = useUiStore((s) => s.setTimelineHeight)
   const { state, toggle, seek, getTransform } = usePreviewPlayback()
+  usePlaybackKeyboard(toggle, clips.length > 0)
+  const { ref: previewFitRef, size: previewSize } = useAspectFit16x9<HTMLDivElement>()
 
   const effectivePreviewHeight = clampPreviewSectionHeight(previewHeight)
   const effectiveTimelineHeight = useMemo(
@@ -134,8 +138,17 @@ export function PreviewWorkspace(): React.JSX.Element {
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3">
         <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
-          <div className="absolute inset-0 flex items-center justify-center p-1">
-            <div className="relative aspect-video h-full max-h-full w-full max-w-full overflow-hidden bg-black">
+          <div ref={previewFitRef} className="absolute inset-0 flex items-center justify-center">
+            <div
+              className="relative shrink-0 overflow-hidden bg-black shadow-inner ring-1 ring-surface-600"
+              style={{
+                width: previewSize.width > 0 ? previewSize.width : '100%',
+                height: previewSize.height > 0 ? previewSize.height : undefined,
+                aspectRatio: previewSize.width > 0 ? undefined : '16 / 9',
+                maxWidth: '100%',
+                maxHeight: '100%'
+              }}
+            >
               {clips.length === 0 ? (
                 <div className="flex h-full w-full items-center justify-center text-center">
                   <div>
@@ -197,7 +210,7 @@ export function PreviewWorkspace(): React.JSX.Element {
               )}
             </button>
             <span className="text-xs text-zinc-400">
-              Clip {state.currentClipIndex + 1} / {clips.length}
+              Clip {state.currentClipIndex + 1} / {clips.length} · Space to play/pause
             </span>
           </div>
         )}
