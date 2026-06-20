@@ -35,7 +35,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle('dialog:selectAudio', async () => {
     const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
       title: 'Select Audio',
-      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a'] }],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'mpeg'] }],
       properties: ['openFile']
     })
     if (result.canceled || result.filePaths.length === 0) return null

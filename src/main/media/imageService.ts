@@ -14,7 +14,7 @@ function parseImageFormat(ext: string): ImageFormat | null {
 
 function parseAudioFormat(ext: string): AudioFormat | null {
   const normalized = ext.toLowerCase().replace('.', '')
-  if (normalized === 'mp3' || normalized === 'wav' || normalized === 'm4a') {
+  if (normalized === 'mp3' || normalized === 'wav' || normalized === 'm4a' || normalized === 'mpeg') {
     return normalized as AudioFormat
   }
   return null

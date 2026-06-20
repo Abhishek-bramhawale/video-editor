@@ -66,7 +66,7 @@ export interface ExportClip {
   transitionId: TransitionId | null
 }
 
-function buildClipFilter(
+export function buildClipFilter(
   clip: ExportClip,
   width: number,
   height: number,
@@ -75,15 +75,30 @@ function buildClipFilter(
   const d = Math.max(1 / fps, clip.durationSeconds).toFixed(3)
 
   if (clip.mediaType === 'video') {
-    return `trim=0:${d},setpts=PTS-STARTPTS,${buildScaleCrop(width, height)},fps=${fps}`
+    return `trim=0:${d},setpts=PTS-STARTPTS,${buildScaleCrop(width, height)},format=yuv420p,fps=${fps}`
   }
 
   if (clip.effectId) {
-    return `${buildZoompanFilter(clip.effectId, width, height, fps, clip.durationSeconds)},setpts=PTS-STARTPTS`
+    return `${buildZoompanFilter(clip.effectId, width, height, fps, clip.durationSeconds)},format=yuv420p,setpts=PTS-STARTPTS`
   }
 
   const frames = Math.max(2, Math.round(clip.durationSeconds * fps))
-  return `${buildScaleCrop(width, height)},loop=loop=${frames}:size=1:start=0,trim=duration=${d},setpts=PTS-STARTPTS,fps=${fps}`
+  return `${buildScaleCrop(width, height)},format=yuv420p,loop=loop=${frames}:size=1:start=0,trim=duration=${d},setpts=PTS-STARTPTS,fps=${fps}`
+}
+
+export function buildAudioFilter(
+  audioInputIndex: number,
+  outputDuration: number,
+  fadeIn: number,
+  fadeOut: number,
+  startOffset: number
+): { filter: string; label: string } {
+  const fadeOutStart = Math.max(0, outputDuration - fadeOut)
+  const trimStart = Math.max(0, startOffset)
+  const trimEnd = trimStart + outputDuration
+  const label = 'aout'
+  const filter = `[${audioInputIndex}:a]atrim=start=${trimStart.toFixed(3)}:end=${trimEnd.toFixed(3)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${fadeOutStart}:d=${fadeOut}[${label}]`
+  return { filter, label }
 }
 
 export function buildSlideshowFilterComplex(
@@ -93,7 +108,7 @@ export function buildSlideshowFilterComplex(
   fps: number,
   transitionSeconds: number,
   outputDuration: number,
-  audio?: { inputIndex: number; fadeIn: number; fadeOut: number }
+  audio?: { inputIndex: number; fadeIn: number; fadeOut: number; startOffset: number }
 ): { filterComplex: string; videoLabel: string; audioLabel?: string } {
   const parts: string[] = []
 
@@ -122,11 +137,15 @@ export function buildSlideshowFilterComplex(
 
   let audioLabel: string | undefined
   if (audio) {
-    const fadeOutStart = Math.max(0, outputDuration - audio.fadeOut)
-    audioLabel = 'aout'
-    parts.push(
-      `[${audio.inputIndex}:a]atrim=0:${outputDuration.toFixed(3)},afade=t=in:st=0:d=${audio.fadeIn},afade=t=out:st=${fadeOutStart}:d=${audio.fadeOut}[${audioLabel}]`
+    const { filter, label } = buildAudioFilter(
+      audio.inputIndex,
+      outputDuration,
+      audio.fadeIn,
+      audio.fadeOut,
+      audio.startOffset
     )
+    audioLabel = label
+    parts.push(filter)
   }
 
   return { filterComplex: parts.join(';'), videoLabel, audioLabel }

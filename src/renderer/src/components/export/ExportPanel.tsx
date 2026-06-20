@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { buildProjectData, useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
+import { buildExportProjectData, useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import type { ExportCodec, ExportResolution, RenderProgress } from '@renderer/types'
 
 function formatTime(seconds: number): string {
@@ -41,7 +41,7 @@ export function ExportPanel(): React.JSX.Element {
     setProgress(null)
 
     const result = await window.slideshow.exportVideo({
-      project: buildProjectData(),
+      project: buildExportProjectData(),
       outputPath
     })
 
@@ -53,7 +53,7 @@ export function ExportPanel(): React.JSX.Element {
     <div className="flex h-full flex-col overflow-y-auto p-4">
       <h2 className="mb-1 text-lg font-semibold text-white">Export Video</h2>
       <p className="mb-6 text-sm text-zinc-400">
-        Render cinematic slideshow with FFmpeg — hardware acceleration enabled when available.
+        Large projects render clips in parallel, then blend transitions. Restart the app after updating.
       </p>
 
       {ffmpegAvailable === false && (

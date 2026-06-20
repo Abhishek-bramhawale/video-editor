@@ -8,6 +8,8 @@ export const CHROME_HEIGHT = 112
 
 export const DEFAULT_PREVIEW_HEIGHT = 360
 export const DEFAULT_TIMELINE_HEIGHT = 200
+export const MUSIC_TIMELINE_HEIGHT = 76
+export const MIN_CLIP_STRIP_HEIGHT = 108
 
 export function getWorkspaceHeight(viewportHeight = window.innerHeight): number {
   return Math.max(0, viewportHeight - CHROME_HEIGHT)

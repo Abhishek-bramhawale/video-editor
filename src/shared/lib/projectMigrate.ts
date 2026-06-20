@@ -46,7 +46,8 @@ export function migrateProjectData(raw: unknown): ProjectData {
     return {
       ...data,
       editorMode: data.editorMode ?? (hasVideo ? 'video' : 'images'),
-      defaultImageClipSeconds: data.defaultImageClipSeconds ?? 5
+      defaultImageClipSeconds: data.defaultImageClipSeconds ?? 5,
+      targetTotalDurationSeconds: data.targetTotalDurationSeconds ?? null
     }
   }
 

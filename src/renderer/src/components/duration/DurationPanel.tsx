@@ -1,4 +1,5 @@
 import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
+import { ImagesTotalDurationControl } from '@renderer/components/duration/ImagesTotalDurationControl'
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -27,11 +28,13 @@ export function DurationPanel(): React.JSX.Element {
       </p>
 
       {editorMode === 'images' && (
-        <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
-          <h3 className="mb-1 text-sm font-semibold text-white">Default image duration</h3>
-          <p className="mb-3 text-xs text-zinc-500">
-            Applied when you add new images to the timeline.
-          </p>
+        <>
+          <ImagesTotalDurationControl />
+          <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
+            <h3 className="mb-1 text-sm font-semibold text-white">Default image duration</h3>
+            <p className="mb-3 text-xs text-zinc-500">
+              Used for new images before you set a total slideshow length.
+            </p>
           <div className="flex flex-wrap items-center gap-2">
             {[3, 5, 8, 10].map((sec) => (
               <button
@@ -59,6 +62,7 @@ export function DurationPanel(): React.JSX.Element {
             <span className="text-sm text-zinc-500">sec per image</span>
           </div>
         </section>
+        </>
       )}
 
       <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">

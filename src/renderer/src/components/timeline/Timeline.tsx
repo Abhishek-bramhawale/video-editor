@@ -15,6 +15,9 @@ interface TimelineProps {
   onReorder: (fromIndex: number, toIndex: number) => void
   onRemove: (id: string) => void
   activeIndex?: number
+  stripScrollRef?: React.RefObject<HTMLDivElement | null>
+  onStripScroll?: (scrollLeft: number) => void
+  reserveMusicStrip?: boolean
 }
 
 interface PickerState {
@@ -51,7 +54,10 @@ export function Timeline({
   onSeek,
   onReorder,
   onRemove,
-  activeIndex
+  activeIndex,
+  stripScrollRef,
+  onStripScroll,
+  reserveMusicStrip = false
 }: TimelineProps): React.JSX.Element {
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const editorMode = useProjectStore((s) => s.editorMode)
@@ -122,8 +128,8 @@ export function Timeline({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto border-t border-surface-600 bg-surface-800 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-surface-600 bg-surface-800 px-4 py-3">
+      <div className="mb-2 flex shrink-0 items-center justify-between text-xs text-zinc-400">
         <span>{formatTime(currentTime)}</span>
         <span>
           {clipCount} clips · Ctrl+scroll to zoom strip
@@ -140,7 +146,7 @@ export function Timeline({
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative shrink-0">
         <input
           type="range"
           min={0}
@@ -171,8 +177,12 @@ export function Timeline({
 
       {clipCount > 0 && (
         <div
-          className="mt-3 flex items-end gap-2 overflow-x-auto pb-1"
+          ref={stripScrollRef}
+          className={`mt-3 flex min-h-0 flex-1 items-end gap-2 overflow-x-auto overflow-y-hidden pb-1 ${
+            reserveMusicStrip ? 'min-h-[96px]' : 'min-h-[108px]'
+          }`}
           onWheel={onWheelZoom}
+          onScroll={(e) => onStripScroll?.(e.currentTarget.scrollLeft)}
         >
           {clips.map((clip, index) => {
             const isActive = activeIndex === index

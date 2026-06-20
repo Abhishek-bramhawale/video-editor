@@ -20,8 +20,9 @@ export function MusicPanel(): React.JSX.Element {
       id: crypto.randomUUID(),
       filePath: meta.filePath,
       fileName: meta.fileName,
-      format: meta.format as 'mp3' | 'wav' | 'm4a',
+      format: meta.format as 'mp3' | 'wav' | 'm4a' | 'mpeg',
       durationSeconds: meta.durationSeconds,
+      startOffsetSeconds: 0,
       fadeInSeconds: DEFAULT_AUDIO_FADE_SECONDS,
       fadeOutSeconds: DEFAULT_AUDIO_FADE_SECONDS
     })
@@ -35,7 +36,8 @@ export function MusicPanel(): React.JSX.Element {
         <div>
           <h2 className="text-lg font-semibold text-white">Background Music</h2>
           <p className="text-sm text-zinc-400">
-            MP3, WAV, or M4A — trimmed to timeline length (never shortens your clips)
+            MP3, WAV, M4A, or MPEG — trimmed to timeline length. Drag the waveform below the preview
+            to choose which part plays.
           </p>
         </div>
         <button
@@ -78,8 +80,8 @@ export function MusicPanel(): React.JSX.Element {
               <span className="text-white">{formatTime(timelineDuration)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-400">Music trimmed to</span>
-              <span className="text-white">{formatTime(timelineDuration)}</span>
+              <span className="text-zinc-400">Start offset</span>
+              <span className="text-white">{formatTime(audio.startOffsetSeconds ?? 0)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-zinc-400">Fade in</span>

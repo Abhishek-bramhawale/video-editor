@@ -5,9 +5,11 @@ import { useImageTimelineUpload } from '@renderer/hooks/useImageTimelineUpload'
 import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import { useUiStore } from '@renderer/stores/uiStore'
 import { getEffect } from '@renderer/lib/effects'
+import { ImagesTotalDurationControl } from '@renderer/components/duration/ImagesTotalDurationControl'
 
 function ImagesModePanel(): React.JSX.Element {
   const clips = useProjectStore((s) => s.clips)
+  const removeClip = useProjectStore((s) => s.removeClip)
   const randomizeImageEffects = useProjectStore((s) => s.randomizeImageEffects)
   const totalDuration = useTimelineTotalDuration()
   const imageThumbMin = useUiStore((s) => s.imageThumbMin)
@@ -83,6 +85,8 @@ function ImagesModePanel(): React.JSX.Element {
         </div>
       )}
 
+      <ImagesTotalDurationControl />
+
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" onWheel={onWheelZoom}>
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
@@ -113,7 +117,7 @@ function ImagesModePanel(): React.JSX.Element {
             {clips.map((clip, index) => (
               <div
                 key={clip.id}
-                className="overflow-hidden rounded-lg bg-surface-900 ring-1 ring-surface-600"
+                className="group overflow-hidden rounded-lg bg-surface-900 ring-1 ring-surface-600"
                 title={clip.fileName}
               >
                 <div className="relative aspect-square">
@@ -124,6 +128,19 @@ function ImagesModePanel(): React.JSX.Element {
                   />
                   <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">
                     {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeClip(clip.id)}
+                    className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white opacity-0 transition-opacity hover:bg-red-600/90 group-hover:opacity-100"
+                    aria-label={`Remove ${clip.fileName}`}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[9px] text-white">
+                    {clip.durationSeconds.toFixed(1)}s
                   </span>
                 </div>
                 <p className="truncate px-1 py-0.5 text-[10px] text-zinc-400">{clip.baseName}</p>

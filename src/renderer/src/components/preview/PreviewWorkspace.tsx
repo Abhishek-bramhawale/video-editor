@@ -1,16 +1,20 @@
-import { pathToFileURL } from '@renderer/lib/media/fileUrl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { pathToFileURL } from '@renderer/lib/media/fileUrl'
 import { usePreviewPlayback } from '@renderer/hooks/usePreviewPlayback'
+import { usePreviewAudio } from '@renderer/hooks/usePreviewAudio'
 import { usePlaybackKeyboard } from '@renderer/hooks/usePlaybackKeyboard'
 import { useAspectFit16x9 } from '@renderer/hooks/useAspectFit16x9'
 import { getTransitionPreviewStyles } from '@renderer/lib/transitions/preview'
 import { useProjectStore } from '@renderer/stores/projectStore'
 import { useUiStore } from '@renderer/stores/uiStore'
 import { Timeline } from '@renderer/components/timeline/Timeline'
+import { MusicTimeline } from '@renderer/components/timeline/MusicTimeline'
 import { ResizeHandle } from '@renderer/components/layout/ResizeHandle'
 import {
   clampTimelineHeight,
-  clampPreviewSectionHeight
+  clampPreviewSectionHeight,
+  MIN_CLIP_STRIP_HEIGHT,
+  MUSIC_TIMELINE_HEIGHT
 } from '@renderer/lib/layout/bounds'
 
 function ClipMedia({
@@ -104,6 +108,7 @@ function ClipMedia({
 
 export function PreviewWorkspace(): React.JSX.Element {
   const clips = useProjectStore((s) => s.clips)
+  const audio = useProjectStore((s) => s.audio)
   const editorMode = useProjectStore((s) => s.editorMode)
   const reorderClips = useProjectStore((s) => s.reorderClips)
   const removeClip = useProjectStore((s) => s.removeClip)
@@ -111,14 +116,29 @@ export function PreviewWorkspace(): React.JSX.Element {
   const timelineHeight = useUiStore((s) => s.timelineHeight)
   const setTimelineHeight = useUiStore((s) => s.setTimelineHeight)
   const { state, toggle, seek, getTransform } = usePreviewPlayback()
+  const previewAudioRef = usePreviewAudio(state.isPlaying, state.currentTime, audio)
   usePlaybackKeyboard(toggle, clips.length > 0)
   const { ref: previewFitRef, size: previewSize } = useAspectFit16x9<HTMLDivElement>()
 
+  const clipScrollRef = useRef<HTMLDivElement>(null)
+  const musicScrollRef = useRef<HTMLDivElement>(null)
+  const scrollSyncRef = useRef(false)
+
+  const syncScroll = useCallback((source: 'clip' | 'music', scrollLeft: number) => {
+    if (scrollSyncRef.current) return
+    scrollSyncRef.current = true
+    const target = source === 'clip' ? musicScrollRef.current : clipScrollRef.current
+    if (target) target.scrollLeft = scrollLeft
+    scrollSyncRef.current = false
+  }, [])
+
   const effectivePreviewHeight = clampPreviewSectionHeight(previewHeight)
-  const effectiveTimelineHeight = useMemo(
-    () => clampTimelineHeight(timelineHeight, effectivePreviewHeight),
-    [timelineHeight, effectivePreviewHeight]
-  )
+  const effectiveTimelineHeight = useMemo(() => {
+    const base = clampTimelineHeight(timelineHeight, effectivePreviewHeight)
+    if (!audio) return base
+    const minWithMusic = MIN_CLIP_STRIP_HEIGHT + MUSIC_TIMELINE_HEIGHT + 72
+    return Math.max(base, minWithMusic)
+  }, [audio, effectivePreviewHeight, timelineHeight])
 
   const onResizeTimeline = useCallback(
     (deltaY: number) => {
@@ -137,6 +157,7 @@ export function PreviewWorkspace(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <audio ref={previewAudioRef} className="hidden" preload="auto" />
       <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3">
         <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
           <div ref={previewFitRef} className="absolute inset-0 flex items-center justify-center">
@@ -222,7 +243,7 @@ export function PreviewWorkspace(): React.JSX.Element {
       </div>
 
       <ResizeHandle onResize={onResizeTimeline} />
-      <div className="shrink-0 overflow-hidden" style={{ height: effectiveTimelineHeight }}>
+      <div className="flex min-h-0 shrink-0 flex-col overflow-hidden" style={{ height: effectiveTimelineHeight }}>
         <Timeline
           currentTime={state.currentTime}
           totalDuration={state.totalDuration}
@@ -231,7 +252,19 @@ export function PreviewWorkspace(): React.JSX.Element {
           onReorder={reorderClips}
           onRemove={removeClip}
           activeIndex={state.currentClipIndex}
+          stripScrollRef={clipScrollRef}
+          onStripScroll={(left) => syncScroll('clip', left)}
+          reserveMusicStrip={!!audio}
         />
+        {audio && state.totalDuration > 0 && (
+          <MusicTimeline
+            currentTime={state.currentTime}
+            totalDuration={state.totalDuration}
+            onSeek={seek}
+            stripScrollRef={musicScrollRef}
+            onStripScroll={(left) => syncScroll('music', left)}
+          />
+        )}
       </div>
     </div>
   )

@@ -11,7 +11,10 @@ import type {
 } from '@renderer/types'
 import { DEFAULT_EXPORT_SETTINGS, DEFAULT_PER_IMAGE_DURATION_SECONDS, DEFAULT_TRANSITION_SECONDS } from '@renderer/types'
 import { getBaseName, sortByBaseName } from '@shared/lib/filenames'
-import { computeTotalFromDurations } from '@renderer/lib/duration'
+import {
+  computeTotalFromDurations,
+  fitDurationsToTargetTotal
+} from '@shared/lib/duration'
 import { slideshowRandomizer } from '@renderer/lib/randomizer'
 
 interface ProjectState {
@@ -19,6 +22,7 @@ interface ProjectState {
   activePanel: AppPanel
   editorMode: EditorMode
   defaultImageClipSeconds: number
+  targetTotalDurationSeconds: number | null
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   transitionSeconds: number
@@ -30,6 +34,7 @@ interface ProjectState {
   setEditorMode: (mode: EditorMode) => void
   setProjectName: (name: string) => void
   setDefaultImageClipSeconds: (seconds: number) => void
+  setTargetTotalDuration: (seconds: number) => void
   setTransitionSeconds: (seconds: number) => void
   setClipTransition: (clipIndex: number, transitionId: TransitionId) => void
   setClipDuration: (clipId: string, seconds: number) => void
@@ -40,6 +45,7 @@ interface ProjectState {
   removeClip: (id: string) => void
   reorderClips: (fromIndex: number, toIndex: number) => void
   setAudio: (audio: AudioTrack | null) => void
+  setAudioStartOffset: (seconds: number) => void
   setExportSettings: (settings: Partial<ExportSettings>) => void
   randomizeImageEffects: () => void
   loadProject: (data: ProjectData) => void
@@ -87,11 +93,60 @@ function bridgeTransitionToNewClips(existing: TimelineClip[]): TimelineClip[] {
   )
 }
 
+function finalizeClipList(clips: TimelineClip[]): TimelineClip[] {
+  return clips.map((clip, index, arr) =>
+    index === arr.length - 1 ? { ...clip, transitionId: null } : clip
+  )
+}
+
+function applyImagesDurationFit(
+  clips: TimelineClip[],
+  transitionSeconds: number,
+  targetTotal: number | null
+): {
+  clips: TimelineClip[]
+  transitionSeconds: number
+  defaultImageClipSeconds?: number
+} {
+  const finalized = finalizeClipList(normalizeOrders(clips))
+  if (targetTotal == null || finalized.length === 0) {
+    return { clips: finalized, transitionSeconds }
+  }
+
+  const { clipDurations, transitionSeconds: newTransition } = fitDurationsToTargetTotal(
+    finalized.map((c) => c.durationSeconds),
+    transitionSeconds,
+    targetTotal
+  )
+  const fitted = finalized.map((clip, i) => ({
+    ...clip,
+    durationSeconds: clipDurations[i] ?? clip.durationSeconds
+  }))
+
+  return {
+    clips: fitted,
+    transitionSeconds: newTransition,
+    defaultImageClipSeconds: clipDurations[0]
+  }
+}
+
+function normalizeAudioTrack(audio: AudioTrack): AudioTrack {
+  return {
+    ...audio,
+    startOffsetSeconds: audio.startOffsetSeconds ?? 0
+  }
+}
+
+function maxAudioStartOffset(audio: AudioTrack, timelineTotal: number): number {
+  return Math.max(0, audio.durationSeconds - timelineTotal)
+}
+
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
   editorMode: 'images' as EditorMode,
   defaultImageClipSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
+  targetTotalDurationSeconds: null as number | null,
   clips: [] as TimelineClip[],
   loadedImages: [] as LoadedImage[],
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
@@ -119,6 +174,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       editorMode: mode,
       clips: [],
       loadedImages: [],
+      targetTotalDurationSeconds: null,
       isDirty: true
     })
   },
@@ -130,9 +186,49 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ defaultImageClipSeconds: value, isDirty: true })
   },
 
+  setTargetTotalDuration: (seconds) => {
+    const target = Math.max(0.1, seconds)
+    set((state) => {
+      if (state.clips.length === 0) {
+        return { targetTotalDurationSeconds: target, isDirty: true }
+      }
+      const fit = applyImagesDurationFit(state.clips, state.transitionSeconds, target)
+      return {
+        targetTotalDurationSeconds: target,
+        clips: fit.clips,
+        transitionSeconds: fit.transitionSeconds,
+        ...(fit.defaultImageClipSeconds != null
+          ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
+          : {}),
+        isDirty: true
+      }
+    })
+  },
+
   setTransitionSeconds: (seconds) => {
     const transition = Math.max(0.1, Math.min(3, seconds))
-    set({ transitionSeconds: transition, isDirty: true })
+    set((state) => {
+      if (
+        state.editorMode !== 'images' ||
+        state.targetTotalDurationSeconds == null ||
+        state.clips.length === 0
+      ) {
+        return { transitionSeconds: transition, isDirty: true }
+      }
+      const fit = applyImagesDurationFit(
+        state.clips,
+        transition,
+        state.targetTotalDurationSeconds
+      )
+      return {
+        transitionSeconds: fit.transitionSeconds,
+        clips: fit.clips,
+        ...(fit.defaultImageClipSeconds != null
+          ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
+          : {}),
+        isDirty: true
+      }
+    })
   },
 
   setClipTransition: (clipIndex, transitionId) => {
@@ -189,7 +285,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       const withFx = assignImageEffectsAndTransitions(draft)
       const existing = bridgeTransitionToNewClips(state.clips)
-      return { clips: normalizeOrders([...existing, ...withFx]), isDirty: true }
+      let clips = normalizeOrders([...existing, ...withFx])
+
+      if (state.targetTotalDurationSeconds != null) {
+        const fit = applyImagesDurationFit(
+          clips,
+          state.transitionSeconds,
+          state.targetTotalDurationSeconds
+        )
+        return {
+          clips: fit.clips,
+          transitionSeconds: fit.transitionSeconds,
+          ...(fit.defaultImageClipSeconds != null
+            ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
+            : {}),
+          isDirty: true
+        }
+      }
+
+      return { clips: finalizeClipList(clips), isDirty: true }
     })
   },
 
@@ -241,10 +355,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   removeClip: (id) => {
-    set((state) => ({
-      clips: normalizeOrders(state.clips.filter((c) => c.id !== id)),
-      isDirty: true
-    }))
+    set((state) => {
+      const remaining = normalizeOrders(state.clips.filter((c) => c.id !== id))
+      if (remaining.length === 0) {
+        return { clips: remaining, isDirty: true }
+      }
+
+      if (state.editorMode === 'images') {
+        const currentTotal = computeTotalFromDurations(
+          state.clips.map((c) => c.durationSeconds),
+          state.transitionSeconds
+        )
+        const target = state.targetTotalDurationSeconds ?? currentTotal
+        const fit = applyImagesDurationFit(remaining, state.transitionSeconds, target)
+        return {
+          clips: fit.clips,
+          transitionSeconds: fit.transitionSeconds,
+          targetTotalDurationSeconds: target,
+          ...(fit.defaultImageClipSeconds != null
+            ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
+            : {}),
+          isDirty: true
+        }
+      }
+
+      return { clips: finalizeClipList(remaining), isDirty: true }
+    })
   },
 
   reorderClips: (fromIndex, toIndex) => {
@@ -256,7 +392,47 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
-  setAudio: (audio) => set({ audio, isDirty: true }),
+  setAudio: (audio) =>
+    set((state) => {
+      if (!audio) return { audio: null, isDirty: true }
+      const timelineTotal =
+        state.clips.length > 0
+          ? computeTotalFromDurations(
+              state.clips.map((c) => c.durationSeconds),
+              state.transitionSeconds
+            )
+          : 0
+      const normalized = normalizeAudioTrack(audio)
+      const maxOffset = maxAudioStartOffset(normalized, timelineTotal)
+      return {
+        audio: {
+          ...normalized,
+          startOffsetSeconds: Math.min(normalized.startOffsetSeconds, maxOffset)
+        },
+        isDirty: true
+      }
+    }),
+
+  setAudioStartOffset: (seconds) => {
+    set((state) => {
+      if (!state.audio) return state
+      const timelineTotal =
+        state.clips.length > 0
+          ? computeTotalFromDurations(
+              state.clips.map((c) => c.durationSeconds),
+              state.transitionSeconds
+            )
+          : 0
+      const maxOffset = maxAudioStartOffset(state.audio, timelineTotal)
+      return {
+        audio: {
+          ...state.audio,
+          startOffsetSeconds: Math.max(0, Math.min(maxOffset, seconds))
+        },
+        isDirty: true
+      }
+    })
+  },
 
   setExportSettings: (settings) =>
     set((state) => ({
@@ -287,10 +463,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projectName: data.name,
       editorMode: data.editorMode ?? (hasVideo ? 'video' : 'images'),
       defaultImageClipSeconds: data.defaultImageClipSeconds ?? DEFAULT_PER_IMAGE_DURATION_SECONDS,
+      targetTotalDurationSeconds: data.targetTotalDurationSeconds ?? null,
       transitionSeconds: data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS,
       clips: normalizeOrders(data.clips),
       loadedImages: data.loadedImages ?? [],
-      audio: data.audio,
+      audio: data.audio ? normalizeAudioTrack(data.audio) : null,
       exportSettings: data.exportSettings,
       isDirty: false
     })
@@ -329,10 +506,27 @@ export function buildProjectData(): ProjectData {
     transitionSeconds: state.transitionSeconds,
     editorMode: state.editorMode,
     defaultImageClipSeconds: state.defaultImageClipSeconds,
+    targetTotalDurationSeconds: state.targetTotalDurationSeconds,
     clips: state.clips,
     loadedImages: state.loadedImages,
     audio: state.audio,
     exportSettings: state.exportSettings
+  }
+}
+
+/** Lean project payload for FFmpeg export (no base64 thumbnails). */
+export function buildExportProjectData(): ProjectData {
+  const data = buildProjectData()
+  return {
+    ...data,
+    clips: data.clips.map(({ thumbnailUrl: _t, ...clip }) => ({
+      ...clip,
+      thumbnailUrl: ''
+    })),
+    loadedImages: data.loadedImages.map(({ thumbnailUrl: _t, ...img }) => ({
+      ...img,
+      thumbnailUrl: ''
+    }))
   }
 }
 
