@@ -9,6 +9,9 @@ function formatTime(seconds: number): string {
 export function DurationPanel(): React.JSX.Element {
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const setTransitionSeconds = useProjectStore((s) => s.setTransitionSeconds)
+  const editorMode = useProjectStore((s) => s.editorMode)
+  const defaultImageClipSeconds = useProjectStore((s) => s.defaultImageClipSeconds)
+  const setDefaultImageClipSeconds = useProjectStore((s) => s.setDefaultImageClipSeconds)
   const clips = useProjectStore((s) => s.clips)
   const totalDuration = useTimelineTotalDuration()
 
@@ -20,7 +23,43 @@ export function DurationPanel(): React.JSX.Element {
       <h2 className="mb-1 text-base font-semibold text-white">Duration</h2>
       <p className="mb-4 text-sm text-zinc-400">
         Each clip has its own length (set on the timeline). Music does not change clip durations.
+        {editorMode === 'images' && ' New images use the default duration below.'}
       </p>
+
+      {editorMode === 'images' && (
+        <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
+          <h3 className="mb-1 text-sm font-semibold text-white">Default image duration</h3>
+          <p className="mb-3 text-xs text-zinc-500">
+            Applied when you add new images to the timeline.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {[3, 5, 8, 10].map((sec) => (
+              <button
+                key={sec}
+                type="button"
+                onClick={() => setDefaultImageClipSeconds(sec)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  defaultImageClipSeconds === sec
+                    ? 'bg-accent text-white'
+                    : 'bg-surface-700 text-zinc-300 hover:bg-surface-600'
+                }`}
+              >
+                {sec}s
+              </button>
+            ))}
+            <input
+              type="number"
+              min={0.1}
+              max={120}
+              step={0.5}
+              value={Number(defaultImageClipSeconds.toFixed(1))}
+              onChange={(e) => setDefaultImageClipSeconds(parseFloat(e.target.value) || 5)}
+              className="w-20 rounded-lg border border-surface-600 bg-surface-700 px-2 py-1.5 text-center text-white"
+            />
+            <span className="text-sm text-zinc-500">sec per image</span>
+          </div>
+        </section>
+      )}
 
       <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
         <h3 className="mb-1 text-sm font-semibold text-white">Transition overlap</h3>
@@ -57,16 +96,20 @@ export function DurationPanel(): React.JSX.Element {
 
       {clips.length > 0 && (
         <div className="max-w-3xl rounded-xl bg-surface-800 p-4 text-sm ring-1 ring-surface-600">
-          <div className="flex justify-between">
+          <div className="mt-2 flex justify-between">
             <span className="text-zinc-400">Timeline clips</span>
             <span className="text-white">{clips.length}</span>
           </div>
+          {editorMode === 'video' && (
+            <div className="mt-2 flex justify-between">
+              <span className="text-zinc-400">Videos</span>
+              <span className="text-white">{videoCount}</span>
+            </div>
+          )}
           <div className="mt-2 flex justify-between">
-            <span className="text-zinc-400">Videos</span>
-            <span className="text-white">{videoCount}</span>
-          </div>
-          <div className="mt-2 flex justify-between">
-            <span className="text-zinc-400">Images (replaced)</span>
+            <span className="text-zinc-400">
+              {editorMode === 'images' ? 'Images' : 'Images (replaced)'}
+            </span>
             <span className="text-white">{imageCount}</span>
           </div>
           <div className="mt-2 flex justify-between">

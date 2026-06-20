@@ -104,6 +104,7 @@ function ClipMedia({
 
 export function PreviewWorkspace(): React.JSX.Element {
   const clips = useProjectStore((s) => s.clips)
+  const editorMode = useProjectStore((s) => s.editorMode)
   const reorderClips = useProjectStore((s) => s.reorderClips)
   const removeClip = useProjectStore((s) => s.removeClip)
   const previewHeight = useUiStore((s) => s.previewHeight)
@@ -153,7 +154,11 @@ export function PreviewWorkspace(): React.JSX.Element {
                 <div className="flex h-full w-full items-center justify-center text-center">
                   <div>
                     <p className="text-base font-medium text-white">Preview</p>
-                    <p className="mt-1 text-sm text-zinc-500">Drop videos to see your slideshow</p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      {editorMode === 'images'
+                        ? 'Drop images to build your slideshow'
+                        : 'Drop videos to see your slideshow'}
+                    </p>
                   </div>
                 </div>
               ) : (

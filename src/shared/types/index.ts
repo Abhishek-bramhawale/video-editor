@@ -42,6 +42,9 @@ export type { TransitionId, TransitionFamily } from '../transitions/catalog'
 
 export type ClipMediaType = 'video' | 'image'
 
+/** Editor workflow: images-only slideshow or video-first with image replacement */
+export type EditorMode = 'images' | 'video'
+
 /** A single clip on the timeline (video or image) */
 export interface TimelineClip {
   id: string
@@ -130,6 +133,8 @@ export interface ProjectData {
   createdAt: string
   updatedAt: string
   transitionSeconds?: number
+  editorMode?: EditorMode
+  defaultImageClipSeconds?: number
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   audio: AudioTrack | null

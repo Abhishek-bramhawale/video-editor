@@ -2,13 +2,14 @@ import { create } from 'zustand'
 import type {
   AppPanel,
   AudioTrack,
+  EditorMode,
   ExportSettings,
   LoadedImage,
   ProjectData,
   TimelineClip,
   TransitionId
 } from '@renderer/types'
-import { DEFAULT_EXPORT_SETTINGS, DEFAULT_TRANSITION_SECONDS } from '@renderer/types'
+import { DEFAULT_EXPORT_SETTINGS, DEFAULT_PER_IMAGE_DURATION_SECONDS, DEFAULT_TRANSITION_SECONDS } from '@renderer/types'
 import { getBaseName, sortByBaseName } from '@shared/lib/filenames'
 import { computeTotalFromDurations } from '@renderer/lib/duration'
 import { slideshowRandomizer } from '@renderer/lib/randomizer'
@@ -16,6 +17,8 @@ import { slideshowRandomizer } from '@renderer/lib/randomizer'
 interface ProjectState {
   projectName: string
   activePanel: AppPanel
+  editorMode: EditorMode
+  defaultImageClipSeconds: number
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   transitionSeconds: number
@@ -24,11 +27,14 @@ interface ProjectState {
   isDirty: boolean
 
   setActivePanel: (panel: AppPanel) => void
+  setEditorMode: (mode: EditorMode) => void
   setProjectName: (name: string) => void
+  setDefaultImageClipSeconds: (seconds: number) => void
   setTransitionSeconds: (seconds: number) => void
   setClipTransition: (clipIndex: number, transitionId: TransitionId) => void
   setClipDuration: (clipId: string, seconds: number) => void
   addVideos: (clips: TimelineClip[]) => void
+  addImagesToTimeline: (images: LoadedImage[]) => void
   loadImages: (images: LoadedImage[]) => void
   replaceClipWithImage: (clipId: string) => { ok: true } | { ok: false; error: string }
   removeClip: (id: string) => void
@@ -64,9 +70,28 @@ function assignTransitionsToNewClips(
   return result
 }
 
+function assignImageEffectsAndTransitions(clips: TimelineClip[]): TimelineClip[] {
+  return clips.map((clip, i) => ({
+    ...clip,
+    effectId: slideshowRandomizer.pickEffect(),
+    transitionId: i < clips.length - 1 ? slideshowRandomizer.pickTransition() : null
+  }))
+}
+
+function bridgeTransitionToNewClips(existing: TimelineClip[]): TimelineClip[] {
+  if (existing.length === 0) return existing
+  const lastIdx = existing.length - 1
+  if (existing[lastIdx].transitionId) return existing
+  return existing.map((c, i) =>
+    i === lastIdx ? { ...c, transitionId: slideshowRandomizer.pickTransition() } : c
+  )
+}
+
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
+  editorMode: 'images' as EditorMode,
+  defaultImageClipSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
   clips: [] as TimelineClip[],
   loadedImages: [] as LoadedImage[],
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
@@ -80,7 +105,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setActivePanel: (panel) => set({ activePanel: panel }),
 
+  setEditorMode: (mode) => {
+    const state = get()
+    if (mode === state.editorMode) return
+    if (state.clips.length > 0 || state.loadedImages.length > 0) {
+      const ok = window.confirm(
+        'Switching mode clears the timeline and image buffer. Continue?'
+      )
+      if (!ok) return
+    }
+    slideshowRandomizer.reset()
+    set({
+      editorMode: mode,
+      clips: [],
+      loadedImages: [],
+      isDirty: true
+    })
+  },
+
   setProjectName: (name) => set({ projectName: name, isDirty: true }),
+
+  setDefaultImageClipSeconds: (seconds) => {
+    const value = Math.max(0.1, seconds)
+    set({ defaultImageClipSeconds: value, isDirty: true })
+  },
 
   setTransitionSeconds: (seconds) => {
     const transition = Math.max(0.1, Math.min(3, seconds))
@@ -107,6 +155,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   addVideos: (newClips) => {
+    if (get().editorMode !== 'video') return
     set((state) => {
       const sorted = sortByBaseName(newClips)
       const withTransitions = assignTransitionsToNewClips(state.clips, sorted)
@@ -125,7 +174,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  addImagesToTimeline: (newImages) => {
+    if (get().editorMode !== 'images') return
+    set((state) => {
+      const sorted = sortByBaseName(newImages)
+      const startOrder = state.clips.length
+      const draft = sorted.map((img, i) =>
+        loadedImageToTimelineClip(
+          img,
+          crypto.randomUUID(),
+          startOrder + i,
+          state.defaultImageClipSeconds
+        )
+      )
+      const withFx = assignImageEffectsAndTransitions(draft)
+      const existing = bridgeTransitionToNewClips(state.clips)
+      return { clips: normalizeOrders([...existing, ...withFx]), isDirty: true }
+    })
+  },
+
   loadImages: (newImages) => {
+    if (get().editorMode !== 'video') return
     set((state) => {
       const byBase = new Map(state.loadedImages.map((img) => [img.baseName, img]))
       for (const img of newImages) {
@@ -213,8 +282,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   loadProject: (data) => {
     slideshowRandomizer.reset()
+    const hasVideo = data.clips.some((c) => c.mediaType === 'video')
     set({
       projectName: data.name,
+      editorMode: data.editorMode ?? (hasVideo ? 'video' : 'images'),
+      defaultImageClipSeconds: data.defaultImageClipSeconds ?? DEFAULT_PER_IMAGE_DURATION_SECONDS,
       transitionSeconds: data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS,
       clips: normalizeOrders(data.clips),
       loadedImages: data.loadedImages ?? [],
@@ -255,6 +327,8 @@ export function buildProjectData(): ProjectData {
     createdAt: now,
     updatedAt: now,
     transitionSeconds: state.transitionSeconds,
+    editorMode: state.editorMode,
+    defaultImageClipSeconds: state.defaultImageClipSeconds,
     clips: state.clips,
     loadedImages: state.loadedImages,
     audio: state.audio,
@@ -300,5 +374,28 @@ export function imageMetadataToLoaded(
     width: meta.width,
     height: meta.height,
     thumbnailUrl: meta.thumbnailUrl
+  }
+}
+
+export function loadedImageToTimelineClip(
+  img: LoadedImage,
+  id: string,
+  order: number,
+  durationSeconds: number
+): TimelineClip {
+  return {
+    id,
+    filePath: img.filePath,
+    fileName: img.fileName,
+    baseName: img.baseName,
+    mediaType: 'image',
+    thumbnailUrl: img.thumbnailUrl,
+    width: img.width,
+    height: img.height,
+    order,
+    durationSeconds,
+    effectId: null,
+    transitionId: null,
+    format: img.format
   }
 }

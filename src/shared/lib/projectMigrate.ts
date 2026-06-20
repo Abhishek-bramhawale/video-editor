@@ -41,7 +41,13 @@ export function migrateProjectData(raw: unknown): ProjectData {
   }
 
   if ((raw as ProjectData).version === 2 && 'clips' in raw) {
-    return raw as ProjectData
+    const data = raw as ProjectData
+    const hasVideo = data.clips.some((c) => c.mediaType === 'video')
+    return {
+      ...data,
+      editorMode: data.editorMode ?? (hasVideo ? 'video' : 'images'),
+      defaultImageClipSeconds: data.defaultImageClipSeconds ?? 5
+    }
   }
 
   if (isProjectDataV1(raw)) {
@@ -51,6 +57,8 @@ export function migrateProjectData(raw: unknown): ProjectData {
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
       transitionSeconds: raw.transitionSeconds,
+      editorMode: 'images',
+      defaultImageClipSeconds: raw.perImageDurationSeconds ?? 5,
       clips: raw.images.map(slideshowImageToClip),
       loadedImages: [] as LoadedImage[],
       audio: raw.audio,

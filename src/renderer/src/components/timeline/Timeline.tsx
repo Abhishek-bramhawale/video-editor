@@ -54,6 +54,7 @@ export function Timeline({
   activeIndex
 }: TimelineProps): React.JSX.Element {
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
+  const editorMode = useProjectStore((s) => s.editorMode)
   const setClipTransition = useProjectStore((s) => s.setClipTransition)
   const setClipDuration = useProjectStore((s) => s.setClipDuration)
   const replaceClipWithImage = useProjectStore((s) => s.replaceClipWithImage)
@@ -177,7 +178,9 @@ export function Timeline({
             const isActive = activeIndex === index
             const hasTransition = index < clips.length - 1
             const canReplace =
-              clip.mediaType === 'video' && loadedBaseNames.has(clip.baseName)
+              editorMode === 'video' &&
+              clip.mediaType === 'video' &&
+              loadedBaseNames.has(clip.baseName)
             const widthPx = clipWidthPx(clip.durationSeconds, pixelsPerSecond)
 
             return (

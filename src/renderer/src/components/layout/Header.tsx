@@ -1,6 +1,7 @@
 import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import { useProjectIO } from '@renderer/hooks/useProjectIO'
 import { useUiStore } from '@renderer/stores/uiStore'
+import { EditorModeSwitcher } from '@renderer/components/layout/EditorModeSwitcher'
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -30,6 +31,8 @@ export function Header(): React.JSX.Element {
           <p className="text-xs text-zinc-500">Cinematic Slideshow</p>
         </div>
       </div>
+
+      <EditorModeSwitcher />
 
       <div className="flex items-center gap-2">
         <button
