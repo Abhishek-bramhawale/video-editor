@@ -5,7 +5,8 @@ import type {
   ExportResult,
   ImageMetadata,
   ProjectData,
-  RenderProgress
+  RenderProgress,
+  VideoMetadata
 } from '../shared/types'
 
 const slideshowApi = {
@@ -15,12 +16,17 @@ const slideshowApi = {
 
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('ffmpeg:check'),
 
+  selectVideos: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectVideos'),
+
   selectImages: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectImages'),
 
   selectAudio: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectAudio'),
 
   selectExportPath: (defaultName: string): Promise<string | null> =>
     ipcRenderer.invoke('dialog:selectExportPath', defaultName),
+
+  getVideoMetadata: (filePath: string): Promise<VideoMetadata> =>
+    ipcRenderer.invoke('media:getVideoMetadata', filePath),
 
   getImageMetadata: (filePath: string): Promise<ImageMetadata> =>
     ipcRenderer.invoke('media:getImageMetadata', filePath),

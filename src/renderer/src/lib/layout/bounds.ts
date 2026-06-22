@@ -25,21 +25,24 @@ export function clampPreviewSectionHeight(
   height: number,
   viewportHeight = window.innerHeight
 ): number {
+  const safeHeight = Number.isFinite(height) ? height : DEFAULT_PREVIEW_HEIGHT
   const max = getMaxPreviewSectionHeight(viewportHeight)
-  return Math.max(MIN_PREVIEW_SECTION_HEIGHT, Math.min(max, height))
+  return Math.max(MIN_PREVIEW_SECTION_HEIGHT, Math.min(max, safeHeight))
 }
 
 export function clampTimelineHeight(
   height: number,
   previewSectionHeight: number
 ): number {
+  const safeHeight = Number.isFinite(height) ? height : DEFAULT_TIMELINE_HEIGHT
   const max = Math.max(
     MIN_TIMELINE_HEIGHT,
     previewSectionHeight - MIN_PREVIEW_PLAYER_HEIGHT - RESIZE_HANDLE_HEIGHT
   )
-  return Math.max(MIN_TIMELINE_HEIGHT, Math.min(max, height))
+  return Math.max(MIN_TIMELINE_HEIGHT, Math.min(max, safeHeight))
 }
 
 export function clampImageThumbMin(size: number): number {
-  return Math.max(72, Math.min(240, size))
+  const safeSize = Number.isFinite(size) ? size : 120
+  return Math.max(72, Math.min(240, safeSize))
 }

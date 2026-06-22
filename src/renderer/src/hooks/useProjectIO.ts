@@ -19,13 +19,7 @@ export function useProjectIO(): {
   const openProject = useCallback(async () => {
     const result = await window.slideshow.openProject()
     if (!result) return
-    loadProject({
-      name: result.data.name,
-      targetDurationSeconds: result.data.targetDurationSeconds,
-      images: result.data.images,
-      audio: result.data.audio,
-      exportSettings: result.data.exportSettings
-    })
+    loadProject(result.data)
   }, [loadProject])
 
   const newProject = useCallback(() => {

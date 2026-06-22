@@ -85,6 +85,14 @@ export class SlideshowRandomizer {
     return picked
   }
 
+  assignTransitionsOnly(count: number): TransitionId[] {
+    const transitions: TransitionId[] = []
+    for (let i = 0; i < count - 1; i++) {
+      transitions.push(this.pickTransition())
+    }
+    return transitions
+  }
+
   assignToImages(count: number): { effects: KenBurnsEffectId[]; transitions: TransitionId[] } {
     const effects: KenBurnsEffectId[] = []
     const transitions: TransitionId[] = []

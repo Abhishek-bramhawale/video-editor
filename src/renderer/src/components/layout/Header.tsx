@@ -1,4 +1,4 @@
-import { useProjectStore } from '@renderer/stores/projectStore'
+import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import { useProjectIO } from '@renderer/hooks/useProjectIO'
 import { useUiStore } from '@renderer/stores/uiStore'
 
@@ -11,8 +11,8 @@ function formatDuration(seconds: number): string {
 export function Header(): React.JSX.Element {
   const projectName = useProjectStore((s) => s.projectName)
   const isDirty = useProjectStore((s) => s.isDirty)
-  const imageCount = useProjectStore((s) => s.images.length)
-  const targetDurationSeconds = useProjectStore((s) => s.targetDurationSeconds)
+  const clipCount = useProjectStore((s) => s.clips.length)
+  const totalDuration = useTimelineTotalDuration()
   const { saveProject, openProject, newProject } = useProjectIO()
   const resetLayout = useUiStore((s) => s.resetLayout)
 
@@ -65,10 +65,10 @@ export function Header(): React.JSX.Element {
 
       <div className="flex items-center gap-4 text-xs text-zinc-400">
         <span>
-          {imageCount} image{imageCount !== 1 ? 's' : ''}
+          {clipCount} clip{clipCount !== 1 ? 's' : ''}
         </span>
         <span className="h-3 w-px bg-surface-600" />
-        <span>Target: {formatDuration(targetDurationSeconds)}</span>
+        <span>Length: {formatDuration(totalDuration)}</span>
       </div>
     </header>
   )

@@ -1,5 +1,8 @@
-import { useCallback, useMemo } from 'react'
+import { pathToFileURL } from '@renderer/lib/media/fileUrl'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePreviewPlayback } from '@renderer/hooks/usePreviewPlayback'
+import { usePlaybackKeyboard } from '@renderer/hooks/usePlaybackKeyboard'
+import { useAspectFit16x9 } from '@renderer/hooks/useAspectFit16x9'
 import { getTransitionPreviewStyles } from '@renderer/lib/transitions/preview'
 import { useProjectStore } from '@renderer/stores/projectStore'
 import { useUiStore } from '@renderer/stores/uiStore'
@@ -10,14 +13,105 @@ import {
   clampPreviewSectionHeight
 } from '@renderer/lib/layout/bounds'
 
+function ClipMedia({
+  clip,
+  transform,
+  style,
+  videoTime,
+  isPlaying
+}: {
+  clip: import('@renderer/types').TimelineClip
+  transform: { scale: number; translateX: number; translateY: number }
+  style?: React.CSSProperties
+  videoTime?: number
+  isPlaying?: boolean
+}): React.JSX.Element {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoReady, setVideoReady] = useState(false)
+
+  const seekVideo = useCallback((time: number) => {
+    const el = videoRef.current
+    if (!el || clip.mediaType !== 'video') return
+    const safeTime = Math.max(0, Math.min(time, el.duration || time))
+    if (Number.isFinite(safeTime) && Math.abs(el.currentTime - safeTime) > 0.08) {
+      try {
+        el.currentTime = safeTime
+      } catch {
+        // ignore seek before metadata
+      }
+    }
+  }, [clip.mediaType])
+
+  useEffect(() => {
+    setVideoReady(false)
+  }, [clip.filePath])
+
+  useEffect(() => {
+    if (clip.mediaType !== 'video') return
+    seekVideo(videoTime ?? 0)
+  }, [clip.mediaType, videoTime, seekVideo, videoReady])
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el || clip.mediaType !== 'video') return
+    if (isPlaying) void el.play().catch(() => {})
+    else el.pause()
+  }, [clip.mediaType, isPlaying])
+
+  if (clip.mediaType === 'video') {
+    const src = pathToFileURL(clip.filePath)
+    return (
+      <>
+        <img
+          src={clip.thumbnailUrl}
+          alt=""
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ ...style, opacity: videoReady ? 0 : 1 }}
+        />
+        <video
+          ref={videoRef}
+          key={clip.filePath}
+          src={src}
+          muted
+          playsInline
+          preload="auto"
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ ...style, opacity: videoReady ? 1 : 0 }}
+          onLoadedData={() => {
+            setVideoReady(true)
+            seekVideo(videoTime ?? 0)
+          }}
+          onError={() => setVideoReady(false)}
+        />
+      </>
+    )
+  }
+
+  return (
+    <img
+      src={clip.thumbnailUrl}
+      alt={clip.fileName}
+      className="absolute inset-0 h-full w-full object-cover transition-none will-change-transform"
+      style={{
+        transform: `scale(${transform.scale}) translate(${transform.translateX}%, ${transform.translateY}%)`,
+        transformOrigin: 'center center',
+        ...style
+      }}
+    />
+  )
+}
+
 export function PreviewWorkspace(): React.JSX.Element {
-  const images = useProjectStore((s) => s.images)
-  const reorderImages = useProjectStore((s) => s.reorderImages)
-  const removeImage = useProjectStore((s) => s.removeImage)
+  const clips = useProjectStore((s) => s.clips)
+  const reorderClips = useProjectStore((s) => s.reorderClips)
+  const removeClip = useProjectStore((s) => s.removeClip)
   const previewHeight = useUiStore((s) => s.previewHeight)
   const timelineHeight = useUiStore((s) => s.timelineHeight)
   const setTimelineHeight = useUiStore((s) => s.setTimelineHeight)
   const { state, toggle, seek, getTransform } = usePreviewPlayback()
+  usePlaybackKeyboard(toggle, clips.length > 0)
+  const { ref: previewFitRef, size: previewSize } = useAspectFit16x9<HTMLDivElement>()
 
   const effectivePreviewHeight = clampPreviewSectionHeight(previewHeight)
   const effectiveTimelineHeight = useMemo(
@@ -32,58 +126,66 @@ export function PreviewWorkspace(): React.JSX.Element {
     [effectiveTimelineHeight, setTimelineHeight]
   )
 
-  const currentImage = images[state.currentImageIndex]
-  const nextImage = images[state.currentImageIndex + 1]
+  const currentClip = clips[state.currentClipIndex]
+  const nextClip = clips[state.currentClipIndex + 1]
   const transform = getTransform()
-  const isTransitioning = state.inTransition && !!nextImage
+  const isTransitioning = state.inTransition && !!nextClip
   const styles = isTransitioning
-    ? getTransitionPreviewStyles(currentImage?.transitionId, state.transitionT)
+    ? getTransitionPreviewStyles(currentClip?.transitionId, state.transitionT)
     : null
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3" style={{ minHeight: 0 }}>
-        <div className="relative mx-auto flex min-h-[100px] w-full flex-1 items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
-          <div className="relative max-h-full max-w-full aspect-video overflow-hidden">
-            {images.length === 0 ? (
-              <div className="text-center">
-                <p className="text-base font-medium text-white">Preview</p>
-                <p className="mt-1 text-sm text-zinc-500">Add images to see your slideshow</p>
-              </div>
-            ) : (
-              <>
-                {currentImage && (
-                  <img
-                    src={currentImage.thumbnailUrl}
-                    alt={currentImage.fileName}
-                    className="absolute inset-0 h-full w-full object-cover transition-none will-change-transform"
-                    style={{
-                      transform: `scale(${transform.scale}) translate(${transform.translateX}%, ${transform.translateY}%)`,
-                      transformOrigin: 'center center',
-                      ...(styles?.current ?? {})
-                    }}
-                  />
-                )}
-                {nextImage && isTransitioning && (
-                  <img
-                    src={nextImage.thumbnailUrl}
-                    alt={nextImage.fileName}
-                    className="absolute inset-0 h-full w-full object-cover will-change-transform"
-                    style={styles?.next ?? {}}
-                  />
-                )}
-                {styles?.overlay && (
-                  <div
-                    className="pointer-events-none absolute inset-0"
-                    style={styles.overlay}
-                  />
-                )}
-              </>
-            )}
+      <div className="flex min-h-0 flex-1 flex-col bg-surface-900 p-3">
+        <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-surface-600">
+          <div ref={previewFitRef} className="absolute inset-0 flex items-center justify-center">
+            <div
+              className="relative shrink-0 overflow-hidden bg-black shadow-inner ring-1 ring-surface-600"
+              style={{
+                width: previewSize.width > 0 ? previewSize.width : '100%',
+                height: previewSize.height > 0 ? previewSize.height : undefined,
+                aspectRatio: previewSize.width > 0 ? undefined : '16 / 9',
+                maxWidth: '100%',
+                maxHeight: '100%'
+              }}
+            >
+              {clips.length === 0 ? (
+                <div className="flex h-full w-full items-center justify-center text-center">
+                  <div>
+                    <p className="text-base font-medium text-white">Preview</p>
+                    <p className="mt-1 text-sm text-zinc-500">Drop videos to see your slideshow</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {currentClip && (
+                    <ClipMedia
+                      clip={currentClip}
+                      transform={transform}
+                      videoTime={state.localTimeSeconds}
+                      isPlaying={state.isPlaying && !isTransitioning}
+                      style={styles?.current ?? {}}
+                    />
+                  )}
+                  {nextClip && isTransitioning && (
+                    <ClipMedia
+                      clip={nextClip}
+                      transform={{ scale: 1, translateX: 0, translateY: 0 }}
+                      videoTime={0}
+                      isPlaying={false}
+                      style={styles?.next ?? {}}
+                    />
+                  )}
+                  {styles?.overlay && (
+                    <div className="pointer-events-none absolute inset-0" style={styles.overlay} />
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {images.length > 0 && (
+        {clips.length > 0 && (
           <div className="mt-2 flex shrink-0 items-center justify-center gap-3">
             <button
               type="button"
@@ -108,7 +210,7 @@ export function PreviewWorkspace(): React.JSX.Element {
               )}
             </button>
             <span className="text-xs text-zinc-400">
-              Clip {state.currentImageIndex + 1} / {images.length}
+              Clip {state.currentClipIndex + 1} / {clips.length} · Space to play/pause
             </span>
           </div>
         )}
@@ -119,11 +221,11 @@ export function PreviewWorkspace(): React.JSX.Element {
         <Timeline
           currentTime={state.currentTime}
           totalDuration={state.totalDuration}
-          images={images}
+          clips={clips}
           onSeek={seek}
-          onReorder={reorderImages}
-          onRemove={removeImage}
-          activeIndex={state.currentImageIndex}
+          onReorder={reorderClips}
+          onRemove={removeClip}
+          activeIndex={state.currentClipIndex}
         />
       </div>
     </div>

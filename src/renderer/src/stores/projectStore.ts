@@ -2,29 +2,22 @@ import { create } from 'zustand'
 import type {
   AppPanel,
   AudioTrack,
-  DurationMode,
   ExportSettings,
-  SlideshowImage,
+  LoadedImage,
+  ProjectData,
+  TimelineClip,
   TransitionId
 } from '@renderer/types'
-import {
-  DEFAULT_EXPORT_SETTINGS,
-  DEFAULT_PER_IMAGE_DURATION_SECONDS,
-  DEFAULT_TRANSITION_SECONDS
-} from '@renderer/types'
-import {
-  computePerImageFromTotal,
-  computeTotalFromPerImage
-} from '@renderer/lib/duration'
+import { DEFAULT_EXPORT_SETTINGS, DEFAULT_TRANSITION_SECONDS } from '@renderer/types'
+import { getBaseName, sortByBaseName } from '@shared/lib/filenames'
+import { computeTotalFromDurations } from '@renderer/lib/duration'
 import { slideshowRandomizer } from '@renderer/lib/randomizer'
 
 interface ProjectState {
   projectName: string
   activePanel: AppPanel
-  images: SlideshowImage[]
-  targetDurationSeconds: number
-  durationMode: DurationMode
-  perImageDurationSeconds: number
+  clips: TimelineClip[]
+  loadedImages: LoadedImage[]
   transitionSeconds: number
   audio: AudioTrack | null
   exportSettings: ExportSettings
@@ -32,71 +25,50 @@ interface ProjectState {
 
   setActivePanel: (panel: AppPanel) => void
   setProjectName: (name: string) => void
-  setTargetDurationSeconds: (seconds: number) => void
-  setPerImageDurationSeconds: (seconds: number) => void
   setTransitionSeconds: (seconds: number) => void
-  setImageTransition: (imageIndex: number, transitionId: TransitionId) => void
-  addImages: (images: SlideshowImage[]) => void
-  removeImage: (id: string) => void
-  reorderImages: (fromIndex: number, toIndex: number) => void
+  setClipTransition: (clipIndex: number, transitionId: TransitionId) => void
+  setClipDuration: (clipId: string, seconds: number) => void
+  addVideos: (clips: TimelineClip[]) => void
+  loadImages: (images: LoadedImage[]) => void
+  replaceClipWithImage: (clipId: string) => { ok: true } | { ok: false; error: string }
+  removeClip: (id: string) => void
+  reorderClips: (fromIndex: number, toIndex: number) => void
   setAudio: (audio: AudioTrack | null) => void
   setExportSettings: (settings: Partial<ExportSettings>) => void
-  randomizeEffects: () => void
-  loadProject: (data: {
-    name: string
-    targetDurationSeconds: number
-    durationMode?: DurationMode
-    perImageDurationSeconds?: number
-    transitionSeconds?: number
-    images: SlideshowImage[]
-    audio: AudioTrack | null
-    exportSettings: ExportSettings
-  }) => void
+  randomizeImageEffects: () => void
+  loadProject: (data: ProjectData) => void
   markClean: () => void
   resetProject: () => void
 }
 
-function normalizeOrders(images: SlideshowImage[]): SlideshowImage[] {
-  return images.map((img, index) => ({ ...img, order: index }))
+function normalizeOrders(clips: TimelineClip[]): TimelineClip[] {
+  return clips.map((clip, index) => ({ ...clip, order: index }))
 }
 
-function applyPerImageToImages(
-  images: SlideshowImage[],
-  perImage: number
-): SlideshowImage[] {
-  return images.map((img) => ({ ...img, durationSeconds: perImage }))
-}
+function assignTransitionsToNewClips(
+  existing: TimelineClip[],
+  added: TimelineClip[]
+): TimelineClip[] {
+  if (added.length === 0) return []
 
-function syncFromTotal(
-  images: SlideshowImage[],
-  targetSeconds: number,
-  transitionSeconds: number
-): { images: SlideshowImage[]; perImageDurationSeconds: number } {
-  const perImage = computePerImageFromTotal(targetSeconds, images.length, transitionSeconds)
-  return {
-    images: applyPerImageToImages(images, perImage),
-    perImageDurationSeconds: perImage
+  const result: TimelineClip[] = added.map((clip) => ({
+    ...clip,
+    effectId: null,
+    transitionId: null
+  }))
+
+  for (let i = 0; i < result.length - 1; i++) {
+    result[i] = { ...result[i], transitionId: slideshowRandomizer.pickTransition() }
   }
-}
 
-function syncFromPerImage(
-  images: SlideshowImage[],
-  perImage: number,
-  transitionSeconds: number
-): { images: SlideshowImage[]; targetDurationSeconds: number } {
-  return {
-    images: applyPerImageToImages(images, perImage),
-    targetDurationSeconds: computeTotalFromPerImage(perImage, images.length, transitionSeconds)
-  }
+  return result
 }
 
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
-  images: [] as SlideshowImage[],
-  targetDurationSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
-  durationMode: 'per-image' as DurationMode,
-  perImageDurationSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
+  clips: [] as TimelineClip[],
+  loadedImages: [] as LoadedImage[],
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
   audio: null as AudioTrack | null,
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
@@ -110,100 +82,108 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setProjectName: (name) => set({ projectName: name, isDirty: true }),
 
-  setTargetDurationSeconds: (seconds) => {
-    const target = Math.max(1, seconds)
-    set((state) => {
-      const synced = syncFromTotal(state.images, target, state.transitionSeconds)
-      return {
-        durationMode: 'total',
-        targetDurationSeconds: target,
-        perImageDurationSeconds: synced.perImageDurationSeconds,
-        images: synced.images,
-        isDirty: true
-      }
-    })
-  },
-
-  setPerImageDurationSeconds: (seconds) => {
-    const perImage = Math.max(0.1, seconds)
-    set((state) => {
-      const synced = syncFromPerImage(state.images, perImage, state.transitionSeconds)
-      return {
-        durationMode: 'per-image',
-        perImageDurationSeconds: perImage,
-        targetDurationSeconds: synced.targetDurationSeconds,
-        images: synced.images,
-        isDirty: true
-      }
-    })
-  },
-
   setTransitionSeconds: (seconds) => {
     const transition = Math.max(0.1, Math.min(3, seconds))
-    set((state) => {
-      if (state.durationMode === 'per-image') {
-        const synced = syncFromPerImage(state.images, state.perImageDurationSeconds, transition)
-        return { transitionSeconds: transition, ...synced, isDirty: true }
-      }
-      const synced = syncFromTotal(state.images, state.targetDurationSeconds, transition)
-      return {
-        transitionSeconds: transition,
-        images: synced.images,
-        perImageDurationSeconds: synced.perImageDurationSeconds,
-        isDirty: true
-      }
-    })
+    set({ transitionSeconds: transition, isDirty: true })
   },
 
-  setImageTransition: (imageIndex, transitionId) => {
+  setClipTransition: (clipIndex, transitionId) => {
     set((state) => ({
-      images: state.images.map((img, i) =>
-        i === imageIndex ? { ...img, transitionId } : img
+      clips: state.clips.map((clip, i) =>
+        i === clipIndex ? { ...clip, transitionId } : clip
       ),
       isDirty: true
     }))
   },
 
-  addImages: (newImages) => {
-    set((state) => {
-      const combined = normalizeOrders([...state.images, ...newImages])
-      if (state.durationMode === 'per-image') {
-        const synced = syncFromPerImage(combined, state.perImageDurationSeconds, state.transitionSeconds)
-        return { ...synced, images: synced.images, isDirty: true }
-      }
-      const synced = syncFromTotal(combined, state.targetDurationSeconds, state.transitionSeconds)
-      return {
-        images: synced.images,
-        perImageDurationSeconds: synced.perImageDurationSeconds,
-        isDirty: true
-      }
-    })
-    get().randomizeEffects()
+  setClipDuration: (clipId, seconds) => {
+    const duration = Math.max(0.1, seconds)
+    set((state) => ({
+      clips: state.clips.map((clip) =>
+        clip.id === clipId ? { ...clip, durationSeconds: duration } : clip
+      ),
+      isDirty: true
+    }))
   },
 
-  removeImage: (id) => {
+  addVideos: (newClips) => {
     set((state) => {
-      const filtered = normalizeOrders(state.images.filter((img) => img.id !== id))
-      if (state.durationMode === 'per-image') {
-        const synced = syncFromPerImage(filtered, state.perImageDurationSeconds, state.transitionSeconds)
-        return { ...synced, isDirty: true }
+      const sorted = sortByBaseName(newClips)
+      const withTransitions = assignTransitionsToNewClips(state.clips, sorted)
+      let existing = state.clips
+      if (existing.length > 0 && withTransitions.length > 0) {
+        const lastIdx = existing.length - 1
+        const last = existing[lastIdx]
+        if (!last.transitionId) {
+          existing = existing.map((c, i) =>
+            i === lastIdx ? { ...c, transitionId: slideshowRandomizer.pickTransition() } : c
+          )
+        }
       }
-      const synced = syncFromTotal(filtered, state.targetDurationSeconds, state.transitionSeconds)
-      return {
-        images: synced.images,
-        perImageDurationSeconds: synced.perImageDurationSeconds,
-        isDirty: true
-      }
+      const combined = normalizeOrders([...existing, ...withTransitions])
+      return { clips: combined, isDirty: true }
     })
-    get().randomizeEffects()
   },
 
-  reorderImages: (fromIndex, toIndex) => {
+  loadImages: (newImages) => {
     set((state) => {
-      const items = [...state.images]
+      const byBase = new Map(state.loadedImages.map((img) => [img.baseName, img]))
+      for (const img of newImages) {
+        byBase.set(img.baseName, img)
+      }
+      return { loadedImages: Array.from(byBase.values()), isDirty: true }
+    })
+  },
+
+  replaceClipWithImage: (clipId) => {
+    const state = get()
+    const clipIndex = state.clips.findIndex((c) => c.id === clipId)
+    if (clipIndex < 0) return { ok: false, error: 'Clip not found' }
+    const clip = state.clips[clipIndex]
+    if (clip.mediaType !== 'video') return { ok: false, error: 'Only video clips can be replaced' }
+
+    const match = state.loadedImages.find((img) => img.baseName === clip.baseName)
+    if (!match) {
+      return {
+        ok: false,
+        error: `No image named "${clip.baseName}" in loaded images`
+      }
+    }
+
+    const effectId = slideshowRandomizer.pickEffect()
+    const updated: TimelineClip = {
+      ...clip,
+      mediaType: 'image',
+      filePath: match.filePath,
+      fileName: match.fileName,
+      format: match.format,
+      width: match.width,
+      height: match.height,
+      thumbnailUrl: match.thumbnailUrl,
+      effectId,
+      durationSeconds: clip.durationSeconds
+    }
+
+    set((s) => ({
+      clips: s.clips.map((c, i) => (i === clipIndex ? updated : c)),
+      isDirty: true
+    }))
+    return { ok: true }
+  },
+
+  removeClip: (id) => {
+    set((state) => ({
+      clips: normalizeOrders(state.clips.filter((c) => c.id !== id)),
+      isDirty: true
+    }))
+  },
+
+  reorderClips: (fromIndex, toIndex) => {
+    set((state) => {
+      const items = [...state.clips]
       const [moved] = items.splice(fromIndex, 1)
       items.splice(toIndex, 0, moved)
-      return { images: normalizeOrders(items), isDirty: true }
+      return { clips: normalizeOrders(items), isDirty: true }
     })
   },
 
@@ -215,40 +195,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       isDirty: true
     })),
 
-  randomizeEffects: () => {
+  randomizeImageEffects: () => {
     set((state) => {
-      if (state.images.length === 0) return state
+      const imageIndices = state.clips
+        .map((c, i) => (c.mediaType === 'image' ? i : -1))
+        .filter((i) => i >= 0)
+      if (imageIndices.length === 0) return state
+
       slideshowRandomizer.reset()
-      const { effects, transitions } = slideshowRandomizer.assignToImages(state.images.length)
-      const images = state.images.map((img, i) => ({
-        ...img,
-        effectId: effects[i],
-        transitionId: i < transitions.length ? transitions[i] : null
-      }))
-      return { images, isDirty: true }
+      const clips = [...state.clips]
+      for (const i of imageIndices) {
+        clips[i] = { ...clips[i], effectId: slideshowRandomizer.pickEffect() }
+      }
+      return { clips, isDirty: true }
     })
   },
 
   loadProject: (data) => {
     slideshowRandomizer.reset()
-    const images = normalizeOrders(data.images)
-    const durationMode = data.durationMode ?? 'total'
-    const transitionSeconds = data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS
-    const perImage =
-      data.perImageDurationSeconds ??
-      (images[0]?.durationSeconds ||
-        computePerImageFromTotal(data.targetDurationSeconds, images.length, transitionSeconds))
-
     set({
       projectName: data.name,
-      durationMode,
-      perImageDurationSeconds: perImage,
-      transitionSeconds,
-      targetDurationSeconds: data.targetDurationSeconds,
-      images:
-        durationMode === 'per-image'
-          ? applyPerImageToImages(images, perImage)
-          : syncFromTotal(images, data.targetDurationSeconds, transitionSeconds).images,
+      transitionSeconds: data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS,
+      clips: normalizeOrders(data.clips),
+      loadedImages: data.loadedImages ?? [],
       audio: data.audio,
       exportSettings: data.exportSettings,
       isDirty: false
@@ -263,27 +232,73 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   }
 }))
 
-export function usePerImageDuration(): number {
-  const images = useProjectStore((s) => s.images)
-  const perImageDurationSeconds = useProjectStore((s) => s.perImageDurationSeconds)
-  if (images.length === 0) return perImageDurationSeconds
-  return images[0].durationSeconds
+export function useTimelineTotalDuration(): number {
+  const clips = useProjectStore((s) => s.clips)
+  const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
+  if (clips.length === 0) return 0
+  return computeTotalFromDurations(
+    clips.map((c) => c.durationSeconds),
+    transitionSeconds
+  )
 }
 
-export function buildProjectData(): import('@renderer/types').ProjectData {
+export function hasMatchingLoadedImage(baseName: string): boolean {
+  return useProjectStore.getState().loadedImages.some((img) => img.baseName === baseName)
+}
+
+export function buildProjectData(): ProjectData {
   const state = useProjectStore.getState()
   const now = new Date().toISOString()
   return {
-    version: 1,
+    version: 2,
     name: state.projectName,
     createdAt: now,
     updatedAt: now,
-    targetDurationSeconds: state.targetDurationSeconds,
-    durationMode: state.durationMode,
-    perImageDurationSeconds: state.perImageDurationSeconds,
     transitionSeconds: state.transitionSeconds,
-    images: state.images,
+    clips: state.clips,
+    loadedImages: state.loadedImages,
     audio: state.audio,
     exportSettings: state.exportSettings
+  }
+}
+
+/** Build a TimelineClip from video metadata */
+export function videoMetadataToClip(
+  meta: import('@renderer/types').VideoMetadata,
+  id: string,
+  order: number
+): TimelineClip {
+  return {
+    id,
+    filePath: meta.filePath,
+    fileName: meta.fileName,
+    baseName: getBaseName(meta.fileName),
+    mediaType: 'video',
+    thumbnailUrl: meta.thumbnailUrl,
+    width: meta.width,
+    height: meta.height,
+    order,
+    durationSeconds: meta.durationSeconds,
+    nativeDurationSeconds: meta.durationSeconds,
+    effectId: null,
+    transitionId: null,
+    format: meta.format
+  }
+}
+
+/** Build a LoadedImage from image metadata */
+export function imageMetadataToLoaded(
+  meta: import('@renderer/types').ImageMetadata,
+  id: string
+): LoadedImage {
+  return {
+    id,
+    filePath: meta.filePath,
+    fileName: meta.fileName,
+    baseName: getBaseName(meta.fileName),
+    format: meta.format,
+    width: meta.width,
+    height: meta.height,
+    thumbnailUrl: meta.thumbnailUrl
   }
 }

@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import type { ExportRequest, RenderProgress } from '../../shared/types'
 import { DEFAULT_TRANSITION_SECONDS } from '../../shared/types'
+import { computeTotalFromDurations } from '../../shared/lib/duration'
 import {
   buildSlideshowFilterComplex,
   getCodecArgs,
@@ -21,7 +22,6 @@ function runFfmpegWithProgress(
     let stdoutBuf = ''
     let lastPercent = -1
 
-    // FFmpeg -progress key/value lines come on stdout
     proc.stdout?.on('data', (d) => {
       stdoutBuf += d.toString()
       let idx: number
@@ -71,30 +71,33 @@ export async function renderSlideshow(
   onProgress: ProgressCallback
 ): Promise<void> {
   const { project, outputPath } = request
-  const images = [...project.images].sort((a, b) => a.order - b.order)
-  if (images.length === 0) throw new Error('No images to render')
+  const clips = [...project.clips].sort((a, b) => a.order - b.order)
+  if (clips.length === 0) throw new Error('No clips to render')
 
   const { width, height } = getResolution(project.exportSettings.resolution)
   const fps = project.exportSettings.fps
   const transitionSeconds = project.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS
-  const perImageDuration = Math.max(
-    1 / Math.max(1, fps),
-    images[0]?.durationSeconds ?? project.targetDurationSeconds
-  )
-  const durationStr = perImageDuration.toFixed(3)
+  const durations = clips.map((c) => c.durationSeconds)
+  const outputDuration = computeTotalFromDurations(durations, transitionSeconds)
+
+  const exportClips = clips.map((c) => ({
+    mediaType: c.mediaType,
+    durationSeconds: Math.max(1 / Math.max(1, fps), c.durationSeconds),
+    effectId: c.effectId,
+    transitionId: c.transitionId
+  }))
 
   const { vcodec, extra } = getCodecArgs(project.exportSettings.codec)
   const { filterComplex, videoLabel, audioLabel } = buildSlideshowFilterComplex(
-    images.map((img) => ({ effectId: img.effectId, transitionId: img.transitionId })),
+    exportClips,
     width,
     height,
     fps,
-    perImageDuration,
     transitionSeconds,
+    outputDuration,
     project.audio
       ? {
-          inputIndex: images.length,
-          targetDuration: project.targetDurationSeconds,
+          inputIndex: clips.length,
           fadeIn: project.audio.fadeInSeconds,
           fadeOut: project.audio.fadeOutSeconds
         }
@@ -102,8 +105,13 @@ export async function renderSlideshow(
   )
 
   const args = ['-y']
-  for (const img of images) {
-    args.push('-loop', '1', '-t', durationStr, '-i', img.filePath)
+  for (const clip of clips) {
+    const durationStr = Math.max(1 / Math.max(1, fps), clip.durationSeconds).toFixed(3)
+    if (clip.mediaType === 'image') {
+      args.push('-loop', '1', '-t', durationStr, '-i', clip.filePath)
+    } else {
+      args.push('-i', clip.filePath)
+    }
   }
   if (project.audio) {
     args.push('-i', project.audio.filePath)
@@ -113,7 +121,7 @@ export async function renderSlideshow(
     stage: 'segments',
     current: 1,
     total: 1,
-    message: `Starting export (${images.length} images)`,
+    message: `Starting export (${clips.length} clips)`,
     percent: 0
   })
 
@@ -123,10 +131,10 @@ export async function renderSlideshow(
     '-filter_complex', filterComplex,
     '-map', `[${videoLabel}]`,
     '-c:v', vcodec,
-  ...extra,
+    ...extra,
     '-pix_fmt', 'yuv420p',
     '-r', String(fps),
-    '-t', String(project.targetDurationSeconds)
+    '-t', outputDuration.toFixed(3)
   )
 
   if (audioLabel) {
@@ -142,7 +150,7 @@ export async function renderSlideshow(
 
   args.push(outputPath)
 
-  await runFfmpegWithProgress(args, project.targetDurationSeconds, onProgress)
+  await runFfmpegWithProgress(args, outputDuration, onProgress)
 
   onProgress({
     stage: 'done',

@@ -1,6 +1,9 @@
 /** Supported image formats */
 export type ImageFormat = 'jpg' | 'jpeg' | 'png' | 'webp'
 
+/** Supported video import formats */
+export type VideoFormat = 'mp4' | 'mov' | 'webm' | 'mkv'
+
 /** Supported audio formats */
 export type AudioFormat = 'mp3' | 'wav' | 'm4a'
 
@@ -37,7 +40,39 @@ export type KenBurnsEffectId =
 import type { TransitionId } from '../transitions/catalog'
 export type { TransitionId, TransitionFamily } from '../transitions/catalog'
 
-/** A single image in the slideshow */
+export type ClipMediaType = 'video' | 'image'
+
+/** A single clip on the timeline (video or image) */
+export interface TimelineClip {
+  id: string
+  filePath: string
+  fileName: string
+  baseName: string
+  mediaType: ClipMediaType
+  thumbnailUrl: string
+  width: number
+  height: number
+  order: number
+  durationSeconds: number
+  nativeDurationSeconds?: number
+  effectId: KenBurnsEffectId | null
+  transitionId: TransitionId | null
+  format?: ImageFormat | VideoFormat
+}
+
+/** Image loaded into the replacement buffer (not on timeline until replace) */
+export interface LoadedImage {
+  id: string
+  filePath: string
+  fileName: string
+  baseName: string
+  format: ImageFormat
+  width: number
+  height: number
+  thumbnailUrl: string
+}
+
+/** @deprecated Use TimelineClip — kept for v1 project migration */
 export interface SlideshowImage {
   id: string
   filePath: string
@@ -70,11 +105,11 @@ export interface ExportSettings {
   fps: number
 }
 
-/** How slideshow timing is controlled */
+/** @deprecated Per-clip durations are authoritative in v2 */
 export type DurationMode = 'per-image' | 'total'
 
-/** Serializable project file */
-export interface ProjectData {
+/** Serializable project file v1 (legacy) */
+export interface ProjectDataV1 {
   version: 1
   name: string
   createdAt: string
@@ -88,6 +123,19 @@ export interface ProjectData {
   exportSettings: ExportSettings
 }
 
+/** Serializable project file v2 */
+export interface ProjectData {
+  version: 2
+  name: string
+  createdAt: string
+  updatedAt: string
+  transitionSeconds?: number
+  clips: TimelineClip[]
+  loadedImages: LoadedImage[]
+  audio: AudioTrack | null
+  exportSettings: ExportSettings
+}
+
 /** App-wide UI state */
 export type AppPanel = 'images' | 'duration' | 'music' | 'export'
 
@@ -97,6 +145,16 @@ export interface ImageMetadata {
   format: ImageFormat
   width: number
   height: number
+  thumbnailUrl: string
+}
+
+export interface VideoMetadata {
+  filePath: string
+  fileName: string
+  format: VideoFormat
+  width: number
+  height: number
+  durationSeconds: number
   thumbnailUrl: string
 }
 
@@ -133,11 +191,11 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
 }
 
 export const DEFAULT_PER_IMAGE_DURATION_SECONDS = 5
-export const DEFAULT_TARGET_DURATION_SECONDS = 240
 export const DEFAULT_TRANSITION_SECONDS = 1
 export const DEFAULT_AUDIO_FADE_SECONDS = 2
 
 export const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'] as const
+export const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm', '.mkv'] as const
 export const SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a'] as const
 
 export const RESOLUTION_MAP: Record<ExportResolution, { width: number; height: number }> = {

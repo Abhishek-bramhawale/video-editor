@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
-import { buildProjectData, useProjectStore } from '@renderer/stores/projectStore'
+import { buildProjectData, useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import type { ExportCodec, ExportResolution, RenderProgress } from '@renderer/types'
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
 export function ExportPanel(): React.JSX.Element {
-  const images = useProjectStore((s) => s.images)
+  const clips = useProjectStore((s) => s.clips)
   const exportSettings = useProjectStore((s) => s.exportSettings)
   const setExportSettings = useProjectStore((s) => s.setExportSettings)
   const projectName = useProjectStore((s) => s.projectName)
+  const totalDuration = useTimelineTotalDuration()
 
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
   const [isExporting, setIsExporting] = useState(false)
@@ -23,7 +30,7 @@ export function ExportPanel(): React.JSX.Element {
   }, [])
 
   const handleExport = async (): Promise<void> => {
-    if (images.length === 0) return
+    if (clips.length === 0) return
 
     const ext = exportSettings.codec === 'mov' ? 'mov' : 'mp4'
     const outputPath = await window.slideshow.selectExportPath(`${projectName}.${ext}`)
@@ -98,8 +105,12 @@ export function ExportPanel(): React.JSX.Element {
 
         <div className="rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600 text-sm">
           <div className="flex justify-between">
-            <span className="text-zinc-400">Images</span>
-            <span className="text-white">{images.length}</span>
+            <span className="text-zinc-400">Clips</span>
+            <span className="text-white">{clips.length}</span>
+          </div>
+          <div className="mt-2 flex justify-between">
+            <span className="text-zinc-400">Duration</span>
+            <span className="text-white">{formatTime(totalDuration)}</span>
           </div>
           <div className="mt-2 flex justify-between">
             <span className="text-zinc-400">Frame rate</span>
@@ -110,7 +121,7 @@ export function ExportPanel(): React.JSX.Element {
         <button
           type="button"
           onClick={handleExport}
-          disabled={images.length === 0 || isExporting || ffmpegAvailable === false}
+          disabled={clips.length === 0 || isExporting || ffmpegAvailable === false}
           className="w-full rounded-lg bg-accent py-3 text-sm font-semibold text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isExporting ? 'Exporting…' : 'Export Video'}

@@ -7,8 +7,9 @@ export interface PlaybackState {
   isPlaying: boolean
   currentTime: number
   totalDuration: number
-  currentImageIndex: number
+  currentClipIndex: number
   localProgress: number
+  localTimeSeconds: number
   inTransition: boolean
   transitionT: number
 }
@@ -17,30 +18,38 @@ function findSegmentAtTime(
   time: number,
   durations: number[],
   transitionSeconds: number
-): { index: number; localT: number; inTransition: boolean; transitionT: number } {
+): { index: number; localT: number; localTimeSeconds: number; inTransition: boolean; transitionT: number } {
   if (durations.length === 0) {
-    return { index: 0, localT: 0, inTransition: false, transitionT: 0 }
+    return { index: 0, localT: 0, localTimeSeconds: 0, inTransition: false, transitionT: 0 }
   }
 
   let elapsed = 0
   for (let i = 0; i < durations.length; i++) {
-    const perImage = durations[i]
+    const perClip = durations[i]
     const segStart = elapsed
-    const segEnd = segStart + perImage
+    const segEnd = segStart + perClip
     if (time < segEnd || i === durations.length - 1) {
-      const localT = Math.max(0, Math.min(1, (time - segStart) / perImage))
+      const localTimeSeconds = Math.max(0, time - segStart)
+      const localT = Math.max(0, Math.min(1, localTimeSeconds / perClip))
       const transitionStart = segEnd - transitionSeconds
       const inTransition =
         i < durations.length - 1 && time >= transitionStart && time < segEnd
       const transitionT = inTransition
         ? (time - transitionStart) / transitionSeconds
         : 0
-      return { index: i, localT, inTransition, transitionT }
+      return { index: i, localT, localTimeSeconds, inTransition, transitionT }
     }
     elapsed = segEnd - transitionSeconds
   }
 
-  return { index: durations.length - 1, localT: 1, inTransition: false, transitionT: 0 }
+  const last = durations.length - 1
+  return {
+    index: last,
+    localT: 1,
+    localTimeSeconds: durations[last],
+    inTransition: false,
+    transitionT: 0
+  }
 }
 
 export function usePreviewPlayback(): {
@@ -51,18 +60,14 @@ export function usePreviewPlayback(): {
   seek: (time: number) => void
   getTransform: () => { scale: number; translateX: number; translateY: number }
 } {
-  const images = useProjectStore((s) => s.images)
-  const targetDuration = useProjectStore((s) => s.targetDurationSeconds)
+  const clips = useProjectStore((s) => s.clips)
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const fps = useProjectStore((s) => s.exportSettings.fps)
-  const durations = images.map((img) => img.durationSeconds)
+  const durations = clips.map((c) => c.durationSeconds)
   const totalDuration =
-    durations.length > 0
-      ? computeTotalFromDurations(durations, transitionSeconds)
-      : targetDuration
+    durations.length > 0 ? computeTotalFromDurations(durations, transitionSeconds) : 0
 
   const quantStep = fps > 0 ? 1 / fps : 0
-  const epsilonSeconds = quantStep > 0 ? quantStep / 2 : 0
   const quantize = (time: number): number => {
     if (quantStep <= 0) return time
     return Math.round(time / quantStep) * quantStep
@@ -75,9 +80,9 @@ export function usePreviewPlayback(): {
 
   const pause = useCallback(() => setIsPlaying(false), [])
   const play = useCallback(() => {
-    if (images.length === 0) return
+    if (clips.length === 0) return
     setIsPlaying(true)
-  }, [images.length])
+  }, [clips.length])
 
   const toggle = useCallback(() => {
     setIsPlaying((p) => !p)
@@ -119,24 +124,25 @@ export function usePreviewPlayback(): {
   }, [isPlaying, totalDuration, quantStep])
 
   const segment = findSegmentAtTime(currentTime, durations, transitionSeconds)
-  const currentImage = images[segment.index]
+  const currentClip = clips[segment.index]
 
   const getTransform = useCallback(() => {
-    if (!currentImage?.effectId) {
+    if (!currentClip || currentClip.mediaType !== 'image' || !currentClip.effectId) {
       return { scale: 1, translateX: 0, translateY: 0 }
     }
-    const effect = getEffect(currentImage.effectId)
+    const effect = getEffect(currentClip.effectId)
     const t = effect.getTransform(segment.localT)
     return { scale: t.scale, translateX: t.translateX, translateY: t.translateY }
-  }, [currentImage, segment.localT])
+  }, [currentClip, segment.localT])
 
   return {
     state: {
       isPlaying,
       currentTime,
       totalDuration,
-      currentImageIndex: segment.index,
+      currentClipIndex: segment.index,
       localProgress: segment.localT,
+      localTimeSeconds: segment.localTimeSeconds,
       inTransition: segment.inTransition,
       transitionT: segment.transitionT
     },
