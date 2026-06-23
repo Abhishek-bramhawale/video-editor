@@ -6,6 +6,7 @@ import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/proj
 import { useUiStore } from '@renderer/stores/uiStore'
 import { getEffect } from '@renderer/lib/effects'
 import { ImagesTotalDurationControl } from '@renderer/components/duration/ImagesTotalDurationControl'
+import { ScenesModePanel } from '@renderer/components/upload/ScenesModePanel'
 
 function ImagesModePanel(): React.JSX.Element {
   const clips = useProjectStore((s) => s.clips)
@@ -363,5 +364,7 @@ function VideoModePanel(): React.JSX.Element {
 
 export function ImageUploadPanel(): React.JSX.Element {
   const editorMode = useProjectStore((s) => s.editorMode)
-  return editorMode === 'images' ? <ImagesModePanel /> : <VideoModePanel />
+  if (editorMode === 'scenes') return <ScenesModePanel />
+  if (editorMode === 'images') return <ImagesModePanel />
+  return <VideoModePanel />
 }

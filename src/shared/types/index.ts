@@ -42,8 +42,37 @@ export type { TransitionId, TransitionFamily } from '../transitions/catalog'
 
 export type ClipMediaType = 'video' | 'image'
 
-/** Editor workflow: images-only slideshow or video-first with image replacement */
-export type EditorMode = 'images' | 'video'
+/** Editor workflow: images slideshow, video replacement, or timed scenes */
+export type EditorMode = 'images' | 'video' | 'scenes'
+
+/** Media item stored inside a scene before timeline flattening */
+export interface SceneMediaItem {
+  id: string
+  filePath: string
+  fileName: string
+  baseName: string
+  mediaType: ClipMediaType
+  thumbnailUrl: string
+  width: number
+  height: number
+  format?: ImageFormat | VideoFormat
+  nativeDurationSeconds?: number
+}
+
+/** A named scene with start time and media list */
+export interface Scene {
+  id: string
+  name: string
+  order: number
+  startTimeSeconds: number
+  media: SceneMediaItem[]
+}
+
+/** Scenes-mode project configuration */
+export interface ScenesConfig {
+  scenes: Scene[]
+  endTimeSeconds: number
+}
 
 /** A single clip on the timeline (video or image) */
 export interface TimelineClip {
@@ -61,6 +90,8 @@ export interface TimelineClip {
   effectId: KenBurnsEffectId | null
   transitionId: TransitionId | null
   format?: ImageFormat | VideoFormat
+  /** Source scene when built from scenes mode */
+  sceneId?: string
 }
 
 /** Image loaded into the replacement buffer (not on timeline until replace) */
@@ -138,6 +169,7 @@ export interface ProjectData {
   editorMode?: EditorMode
   defaultImageClipSeconds?: number
   targetTotalDurationSeconds?: number | null
+  scenesConfig?: ScenesConfig | null
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   audio: AudioTrack | null

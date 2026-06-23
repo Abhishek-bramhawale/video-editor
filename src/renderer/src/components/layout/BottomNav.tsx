@@ -6,7 +6,8 @@ export function BottomNav(): React.JSX.Element {
   const setActivePanel = useProjectStore((s) => s.setActivePanel)
   const clipCount = useProjectStore((s) => s.clips.length)
   const editorMode = useProjectStore((s) => s.editorMode)
-  const mediaLabel = editorMode === 'images' ? 'Images' : 'Videos'
+  const mediaLabel =
+    editorMode === 'images' ? 'Images' : editorMode === 'scenes' ? 'Scenes' : 'Videos'
 
   return (
     <nav className="flex shrink-0 items-center justify-center gap-1 border-t border-surface-600 bg-surface-800 px-4 py-2">

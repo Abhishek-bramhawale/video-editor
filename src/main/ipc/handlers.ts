@@ -32,6 +32,21 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     return result.filePaths.filter(isImageFile)
   })
 
+  ipcMain.handle('dialog:selectMedia', async () => {
+    const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
+      title: 'Select Images or Videos',
+      filters: [
+        {
+          name: 'Images & Videos',
+          extensions: ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'webm', 'mkv']
+        }
+      ],
+      properties: ['openFile', 'multiSelections']
+    })
+    if (result.canceled) return []
+    return result.filePaths.filter((p) => isImageFile(p) || isVideoFile(p))
+  })
+
   ipcMain.handle('dialog:selectAudio', async () => {
     const result = await dialog.showOpenDialog(getWindow() ?? undefined, {
       title: 'Select Audio',

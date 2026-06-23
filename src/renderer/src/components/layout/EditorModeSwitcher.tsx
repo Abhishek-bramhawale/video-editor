@@ -3,7 +3,8 @@ import { useProjectStore } from '@renderer/stores/projectStore'
 
 const MODES: { id: EditorMode; label: string; hint: string }[] = [
   { id: 'images', label: 'Images', hint: 'Image slideshow with effects & transitions' },
-  { id: 'video', label: 'Video', hint: 'Video timeline with optional image replacement' }
+  { id: 'video', label: 'Video', hint: 'Video timeline with optional image replacement' },
+  { id: 'scenes', label: 'Scenes', hint: 'Divide media into timed scenes' }
 ]
 
 export function EditorModeSwitcher(): React.JSX.Element {

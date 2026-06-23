@@ -12,6 +12,8 @@ interface TimelineClipCardProps {
   widthPx: number
   pixelsPerSecond: number
   canReplace: boolean
+  allowDurationEdit?: boolean
+  allowReorder?: boolean
   onRemove: (id: string) => void
   onReplace: (id: string) => void
   onDurationChange: (id: string, seconds: number) => void
@@ -27,6 +29,8 @@ export function TimelineClipCard({
   widthPx,
   pixelsPerSecond,
   canReplace,
+  allowDurationEdit = true,
+  allowReorder = true,
   onRemove,
   onReplace,
   onDurationChange,
@@ -82,15 +86,19 @@ export function TimelineClipCard({
   return (
     <div className="flex shrink-0 flex-col gap-1">
       <div
-        draggable={!isResizing}
-        onDragStart={onDragStartReorder}
-        onDragOver={onDragOverReorder}
-        onDragEnd={onDragEndReorder}
-        className={`group relative cursor-grab overflow-hidden rounded-lg ring-1 active:cursor-grabbing ${
-          isActive ? 'ring-accent' : 'ring-surface-600'
-        } ${isResizing ? 'ring-accent' : ''}`}
+        draggable={allowReorder && !isResizing}
+        onDragStart={allowReorder ? onDragStartReorder : undefined}
+        onDragOver={allowReorder ? onDragOverReorder : undefined}
+        onDragEnd={allowReorder ? onDragEndReorder : undefined}
+        className={`group relative overflow-hidden rounded-lg ring-1 ${
+          allowReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+        } ${isActive ? 'ring-accent' : 'ring-surface-600'} ${isResizing ? 'ring-accent' : ''}`}
         style={{ width: widthPx, height: thumbHeight }}
-        title={`${clip.fileName} — drag right edge to change length`}
+        title={
+          allowDurationEdit
+            ? `${clip.fileName} — drag right edge to change length`
+            : clip.fileName
+        }
       >
         <img
           src={clip.thumbnailUrl}
@@ -123,15 +131,17 @@ export function TimelineClipCard({
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Drag to change clip duration"
-          onMouseDown={onResizeMouseDown}
-          className="absolute inset-y-0 right-0 z-10 flex w-3 cursor-ew-resize items-center justify-center bg-accent/0 hover:bg-accent/40"
-        >
-          <div className="h-8 w-0.5 rounded-full bg-white/70 opacity-0 group-hover:opacity-100" />
-        </div>
+        {allowDurationEdit && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Drag to change clip duration"
+            onMouseDown={onResizeMouseDown}
+            className="absolute inset-y-0 right-0 z-10 flex w-3 cursor-ew-resize items-center justify-center bg-accent/0 hover:bg-accent/40"
+          >
+            <div className="h-8 w-0.5 rounded-full bg-white/70 opacity-0 group-hover:opacity-100" />
+          </div>
+        )}
       </div>
       {clip.mediaType === 'video' && (
         <button

@@ -1,3 +1,4 @@
+import type { Scene } from '../types'
 import { DEFAULT_TRANSITION_SECONDS } from '../types'
 
 export function computeTotalFromDurations(
@@ -51,4 +52,44 @@ export function fitDurationsToTargetTotal(
     clipDurations: clipDurations.map(() => Math.max(0.1, newPerImage)),
     transitionSeconds: newTransition
   }
+}
+
+export function parseMinutesSeconds(minutes: number, seconds: number): number {
+  const m = Math.max(0, Math.floor(minutes))
+  const s = Math.max(0, Math.min(59, Math.floor(seconds)))
+  return m * 60 + s
+}
+
+export function splitMinutesSeconds(totalSeconds: number): { minutes: number; seconds: number } {
+  const safe = Math.max(0, Math.floor(totalSeconds))
+  return { minutes: Math.floor(safe / 60), seconds: safe % 60 }
+}
+
+/** Display as M.SS (e.g. 141s → "2.21") */
+export function formatMinutesSeconds(totalSeconds: number): string {
+  const { minutes, seconds } = splitMinutesSeconds(totalSeconds)
+  return `${minutes}.${seconds.toString().padStart(2, '0')}`
+}
+
+export function getSceneSpanSeconds(
+  sceneIndex: number,
+  scenes: Pick<Scene, 'startTimeSeconds'>[],
+  endTimeSeconds: number
+): number {
+  if (sceneIndex < 0 || sceneIndex >= scenes.length) return 0
+  const start = scenes[sceneIndex].startTimeSeconds
+  const end =
+    sceneIndex < scenes.length - 1
+      ? scenes[sceneIndex + 1].startTimeSeconds
+      : endTimeSeconds
+  return Math.max(0, end - start)
+}
+
+export function fitClipsToSceneDuration(
+  clipCount: number,
+  sceneDurationSeconds: number,
+  transitionSeconds = DEFAULT_TRANSITION_SECONDS
+): number {
+  if (clipCount <= 0 || sceneDurationSeconds <= 0) return 0
+  return Math.max(0.1, computePerImageFromTotal(sceneDurationSeconds, clipCount, transitionSeconds))
 }

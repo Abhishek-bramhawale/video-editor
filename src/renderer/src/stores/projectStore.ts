@@ -6,6 +6,9 @@ import type {
   ExportSettings,
   LoadedImage,
   ProjectData,
+  Scene,
+  SceneMediaItem,
+  ScenesConfig,
   TimelineClip,
   TransitionId
 } from '@renderer/types'
@@ -13,7 +16,9 @@ import { DEFAULT_EXPORT_SETTINGS, DEFAULT_PER_IMAGE_DURATION_SECONDS, DEFAULT_TR
 import { getBaseName, sortByBaseName } from '@shared/lib/filenames'
 import {
   computeTotalFromDurations,
-  fitDurationsToTargetTotal
+  fitClipsToSceneDuration,
+  fitDurationsToTargetTotal,
+  getSceneSpanSeconds
 } from '@shared/lib/duration'
 import { slideshowRandomizer } from '@renderer/lib/randomizer'
 
@@ -23,6 +28,7 @@ interface ProjectState {
   editorMode: EditorMode
   defaultImageClipSeconds: number
   targetTotalDurationSeconds: number | null
+  scenesConfig: ScenesConfig | null
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   transitionSeconds: number
@@ -38,6 +44,12 @@ interface ProjectState {
   setTransitionSeconds: (seconds: number) => void
   setClipTransition: (clipIndex: number, transitionId: TransitionId) => void
   setClipDuration: (clipId: string, seconds: number) => void
+  setSceneCount: (count: number) => void
+  setSceneName: (sceneId: string, name: string) => void
+  setSceneStartTime: (sceneIndex: number, seconds: number) => void
+  setScenesEndTime: (seconds: number) => void
+  addMediaToScene: (sceneId: string, items: SceneMediaItem[]) => void
+  removeMediaFromScene: (sceneId: string, mediaId: string) => void
   addVideos: (clips: TimelineClip[]) => void
   addImagesToTimeline: (images: LoadedImage[]) => void
   loadImages: (images: LoadedImage[]) => void
@@ -141,12 +153,95 @@ function maxAudioStartOffset(audio: AudioTrack, timelineTotal: number): number {
   return Math.max(0, audio.durationSeconds - timelineTotal)
 }
 
+function createDefaultScenesConfig(count: number): ScenesConfig {
+  const scenes: Scene[] = []
+  for (let i = 0; i < count; i++) {
+    scenes.push({
+      id: crypto.randomUUID(),
+      name: `Scene ${i + 1}`,
+      order: i,
+      startTimeSeconds: i === 0 ? 0 : i * 60,
+      media: []
+    })
+  }
+  return {
+    scenes,
+    endTimeSeconds: Math.max(60, count * 60)
+  }
+}
+
+function assignSceneClipEffects(clips: TimelineClip[]): TimelineClip[] {
+  return clips.map((clip, i) => ({
+    ...clip,
+    effectId: clip.mediaType === 'image' ? slideshowRandomizer.pickEffect() : null,
+    transitionId: i < clips.length - 1 ? slideshowRandomizer.pickTransition() : null
+  }))
+}
+
+function sceneMediaToTimelineClip(
+  item: SceneMediaItem,
+  order: number,
+  durationSeconds: number,
+  sceneId: string
+): TimelineClip {
+  return {
+    id: item.id,
+    filePath: item.filePath,
+    fileName: item.fileName,
+    baseName: item.baseName,
+    mediaType: item.mediaType,
+    thumbnailUrl: item.thumbnailUrl,
+    width: item.width,
+    height: item.height,
+    order,
+    durationSeconds,
+    nativeDurationSeconds: item.nativeDurationSeconds,
+    effectId: null,
+    transitionId: null,
+    format: item.format,
+    sceneId
+  }
+}
+
+function buildClipsFromScenesConfig(
+  config: ScenesConfig,
+  transitionSeconds: number
+): TimelineClip[] {
+  let clips: TimelineClip[] = []
+
+  for (let si = 0; si < config.scenes.length; si++) {
+    const scene = config.scenes[si]
+    if (scene.media.length === 0) continue
+
+    const span = getSceneSpanSeconds(si, config.scenes, config.endTimeSeconds)
+    const perClip = fitClipsToSceneDuration(scene.media.length, span, transitionSeconds)
+    const sceneDraft = scene.media.map((item, mi) =>
+      sceneMediaToTimelineClip(item, clips.length + mi, perClip, scene.id)
+    )
+    const withFx = assignSceneClipEffects(sceneDraft)
+    const existing = bridgeTransitionToNewClips(clips)
+    clips = normalizeOrders([...existing, ...withFx])
+  }
+
+  return finalizeClipList(clips)
+}
+
+function applyScenesRebuild(
+  scenesConfig: ScenesConfig | null,
+  transitionSeconds: number
+): { clips: TimelineClip[] } {
+  if (!scenesConfig) return { clips: [] }
+  slideshowRandomizer.reset()
+  return { clips: buildClipsFromScenesConfig(scenesConfig, transitionSeconds) }
+}
+
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
   editorMode: 'images' as EditorMode,
   defaultImageClipSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
   targetTotalDurationSeconds: null as number | null,
+  scenesConfig: null as ScenesConfig | null,
   clips: [] as TimelineClip[],
   loadedImages: [] as LoadedImage[],
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
@@ -163,9 +258,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setEditorMode: (mode) => {
     const state = get()
     if (mode === state.editorMode) return
-    if (state.clips.length > 0 || state.loadedImages.length > 0) {
+    if (
+      state.clips.length > 0 ||
+      state.loadedImages.length > 0 ||
+      state.scenesConfig != null
+    ) {
       const ok = window.confirm(
-        'Switching mode clears the timeline and image buffer. Continue?'
+        'Switching mode clears the timeline, scenes, and image buffer. Continue?'
       )
       if (!ok) return
     }
@@ -174,6 +273,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       editorMode: mode,
       clips: [],
       loadedImages: [],
+      scenesConfig: null,
       targetTotalDurationSeconds: null,
       isDirty: true
     })
@@ -208,6 +308,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setTransitionSeconds: (seconds) => {
     const transition = Math.max(0.1, Math.min(3, seconds))
     set((state) => {
+      if (state.editorMode === 'scenes' && state.scenesConfig) {
+        const { clips } = applyScenesRebuild(state.scenesConfig, transition)
+        return { transitionSeconds: transition, clips, isDirty: true }
+      }
       if (
         state.editorMode !== 'images' ||
         state.targetTotalDurationSeconds == null ||
@@ -231,6 +335,121 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  setSceneCount: (count) => {
+    if (get().editorMode !== 'scenes') return
+    const n = Math.max(1, Math.min(20, Math.floor(count)))
+    set((state) => {
+      const prev = state.scenesConfig
+      if (prev && n < prev.scenes.length) {
+        const trimmed = prev.scenes.slice(0, n)
+        const lostMedia = prev.scenes.slice(n).some((s) => s.media.length > 0)
+        if (lostMedia) {
+          const ok = window.confirm(
+            'Reducing scene count removes media from deleted scenes. Continue?'
+          )
+          if (!ok) return state
+        }
+        const endTimeSeconds = Math.max(
+          trimmed[trimmed.length - 1]?.startTimeSeconds ?? 0,
+          prev.endTimeSeconds
+        )
+        const scenesConfig: ScenesConfig = { scenes: trimmed, endTimeSeconds }
+        const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+        return { scenesConfig, clips, isDirty: true }
+      }
+
+      if (prev && n > prev.scenes.length) {
+        const scenes = [...prev.scenes]
+        const lastStart = scenes[scenes.length - 1]?.startTimeSeconds ?? 0
+        for (let i = scenes.length; i < n; i++) {
+          scenes.push({
+            id: crypto.randomUUID(),
+            name: `Scene ${i + 1}`,
+            order: i,
+            startTimeSeconds: lastStart + (i - scenes.length + 1) * 60,
+            media: []
+          })
+        }
+        const endTimeSeconds = Math.max(prev.endTimeSeconds, scenes[scenes.length - 1].startTimeSeconds + 60)
+        const scenesConfig: ScenesConfig = { scenes, endTimeSeconds }
+        const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+        return { scenesConfig, clips, isDirty: true }
+      }
+
+      if (!prev) {
+        const scenesConfig = createDefaultScenesConfig(n)
+        return { scenesConfig, clips: [], isDirty: true }
+      }
+
+      return state
+    })
+  },
+
+  setSceneName: (sceneId, name) => {
+    if (get().editorMode !== 'scenes') return
+    set((state) => {
+      if (!state.scenesConfig) return state
+      const scenes = state.scenesConfig.scenes.map((s) =>
+        s.id === sceneId ? { ...s, name: name.trim() || s.name } : s
+      )
+      return { scenesConfig: { ...state.scenesConfig, scenes }, isDirty: true }
+    })
+  },
+
+  setSceneStartTime: (sceneIndex, seconds) => {
+    if (get().editorMode !== 'scenes' || sceneIndex <= 0) return
+    set((state) => {
+      if (!state.scenesConfig || sceneIndex >= state.scenesConfig.scenes.length) return state
+      const prevStart = state.scenesConfig.scenes[sceneIndex - 1].startTimeSeconds
+      const startTimeSeconds = Math.max(prevStart + 1, seconds)
+      const scenes = state.scenesConfig.scenes.map((s, i) =>
+        i === sceneIndex ? { ...s, startTimeSeconds } : s
+      )
+      const scenesConfig = { ...state.scenesConfig, scenes }
+      const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+      return { scenesConfig, clips, isDirty: true }
+    })
+  },
+
+  setScenesEndTime: (seconds) => {
+    if (get().editorMode !== 'scenes') return
+    set((state) => {
+      if (!state.scenesConfig) return state
+      const lastStart =
+        state.scenesConfig.scenes[state.scenesConfig.scenes.length - 1]?.startTimeSeconds ?? 0
+      const endTimeSeconds = Math.max(lastStart + 1, seconds)
+      const scenesConfig = { ...state.scenesConfig, endTimeSeconds }
+      const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+      return { scenesConfig, clips, isDirty: true }
+    })
+  },
+
+  addMediaToScene: (sceneId, items) => {
+    if (get().editorMode !== 'scenes' || items.length === 0) return
+    set((state) => {
+      if (!state.scenesConfig) return state
+      const scenes = state.scenesConfig.scenes.map((s) =>
+        s.id === sceneId ? { ...s, media: [...s.media, ...items] } : s
+      )
+      const scenesConfig = { ...state.scenesConfig, scenes }
+      const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+      return { scenesConfig, clips, isDirty: true }
+    })
+  },
+
+  removeMediaFromScene: (sceneId, mediaId) => {
+    if (get().editorMode !== 'scenes') return
+    set((state) => {
+      if (!state.scenesConfig) return state
+      const scenes = state.scenesConfig.scenes.map((s) =>
+        s.id === sceneId ? { ...s, media: s.media.filter((m) => m.id !== mediaId) } : s
+      )
+      const scenesConfig = { ...state.scenesConfig, scenes }
+      const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+      return { scenesConfig, clips, isDirty: true }
+    })
+  },
+
   setClipTransition: (clipIndex, transitionId) => {
     set((state) => ({
       clips: state.clips.map((clip, i) =>
@@ -241,6 +460,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setClipDuration: (clipId, seconds) => {
+    if (get().editorMode === 'scenes') return
     const duration = Math.max(0.1, seconds)
     set((state) => ({
       clips: state.clips.map((clip) =>
@@ -356,6 +576,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   removeClip: (id) => {
     set((state) => {
+      if (state.editorMode === 'scenes' && state.scenesConfig) {
+        const scenes = state.scenesConfig.scenes.map((s) => ({
+          ...s,
+          media: s.media.filter((m) => m.id !== id)
+        }))
+        const scenesConfig = { ...state.scenesConfig, scenes }
+        const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
+        return { scenesConfig, clips, isDirty: true }
+      }
+
       const remaining = normalizeOrders(state.clips.filter((c) => c.id !== id))
       if (remaining.length === 0) {
         return { clips: remaining, isDirty: true }
@@ -384,6 +614,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   reorderClips: (fromIndex, toIndex) => {
+    if (get().editorMode === 'scenes') return
     set((state) => {
       const items = [...state.clips]
       const [moved] = items.splice(fromIndex, 1)
@@ -459,13 +690,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadProject: (data) => {
     slideshowRandomizer.reset()
     const hasVideo = data.clips.some((c) => c.mediaType === 'video')
+    const editorMode = data.editorMode ?? (hasVideo ? 'video' : 'images')
+    const scenesConfig = data.scenesConfig ?? null
+    const transitionSeconds = data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS
+    const clips =
+      editorMode === 'scenes' && scenesConfig
+        ? buildClipsFromScenesConfig(scenesConfig, transitionSeconds)
+        : normalizeOrders(data.clips)
+
     set({
       projectName: data.name,
-      editorMode: data.editorMode ?? (hasVideo ? 'video' : 'images'),
+      editorMode,
       defaultImageClipSeconds: data.defaultImageClipSeconds ?? DEFAULT_PER_IMAGE_DURATION_SECONDS,
       targetTotalDurationSeconds: data.targetTotalDurationSeconds ?? null,
-      transitionSeconds: data.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS,
-      clips: normalizeOrders(data.clips),
+      scenesConfig,
+      transitionSeconds,
+      clips,
       loadedImages: data.loadedImages ?? [],
       audio: data.audio ? normalizeAudioTrack(data.audio) : null,
       exportSettings: data.exportSettings,
@@ -507,6 +747,7 @@ export function buildProjectData(): ProjectData {
     editorMode: state.editorMode,
     defaultImageClipSeconds: state.defaultImageClipSeconds,
     targetTotalDurationSeconds: state.targetTotalDurationSeconds,
+    scenesConfig: state.scenesConfig,
     clips: state.clips,
     loadedImages: state.loadedImages,
     audio: state.audio,
@@ -551,6 +792,41 @@ export function videoMetadataToClip(
     effectId: null,
     transitionId: null,
     format: meta.format
+  }
+}
+
+export function imageMetadataToSceneMedia(
+  meta: import('@renderer/types').ImageMetadata,
+  id: string
+): SceneMediaItem {
+  return {
+    id,
+    filePath: meta.filePath,
+    fileName: meta.fileName,
+    baseName: getBaseName(meta.fileName),
+    mediaType: 'image',
+    thumbnailUrl: meta.thumbnailUrl,
+    width: meta.width,
+    height: meta.height,
+    format: meta.format
+  }
+}
+
+export function videoMetadataToSceneMedia(
+  meta: import('@renderer/types').VideoMetadata,
+  id: string
+): SceneMediaItem {
+  return {
+    id,
+    filePath: meta.filePath,
+    fileName: meta.fileName,
+    baseName: getBaseName(meta.fileName),
+    mediaType: 'video',
+    thumbnailUrl: meta.thumbnailUrl,
+    width: meta.width,
+    height: meta.height,
+    format: meta.format,
+    nativeDurationSeconds: meta.durationSeconds
   }
 }
 

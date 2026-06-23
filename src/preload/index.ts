@@ -20,6 +20,8 @@ const slideshowApi = {
 
   selectImages: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectImages'),
 
+  selectMedia: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectMedia'),
+
   selectAudio: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectAudio'),
 
   selectExportPath: (defaultName: string): Promise<string | null> =>

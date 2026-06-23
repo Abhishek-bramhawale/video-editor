@@ -178,7 +178,9 @@ export function PreviewWorkspace(): React.JSX.Element {
                     <p className="mt-1 text-sm text-zinc-500">
                       {editorMode === 'images'
                         ? 'Drop images to build your slideshow'
-                        : 'Drop videos to see your slideshow'}
+                        : editorMode === 'scenes'
+                          ? 'Set up scenes and load media per scene'
+                          : 'Drop videos to see your slideshow'}
                     </p>
                   </div>
                 </div>

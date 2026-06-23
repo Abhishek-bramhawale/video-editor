@@ -1,5 +1,6 @@
 import { useProjectStore, useTimelineTotalDuration } from '@renderer/stores/projectStore'
 import { ImagesTotalDurationControl } from '@renderer/components/duration/ImagesTotalDurationControl'
+import { formatMinutesSeconds } from '@shared/lib/duration'
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -11,6 +12,7 @@ export function DurationPanel(): React.JSX.Element {
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const setTransitionSeconds = useProjectStore((s) => s.setTransitionSeconds)
   const editorMode = useProjectStore((s) => s.editorMode)
+  const scenesConfig = useProjectStore((s) => s.scenesConfig)
   const defaultImageClipSeconds = useProjectStore((s) => s.defaultImageClipSeconds)
   const setDefaultImageClipSeconds = useProjectStore((s) => s.setDefaultImageClipSeconds)
   const clips = useProjectStore((s) => s.clips)
@@ -23,9 +25,31 @@ export function DurationPanel(): React.JSX.Element {
     <div className="flex h-full flex-col overflow-y-auto p-4">
       <h2 className="mb-1 text-base font-semibold text-white">Duration</h2>
       <p className="mb-4 text-sm text-zinc-400">
-        Each clip has its own length (set on the timeline). Music does not change clip durations.
+        {editorMode === 'scenes'
+          ? 'Clip lengths are calculated automatically from scene timestamps.'
+          : 'Each clip has its own length (set on the timeline). Music does not change clip durations.'}
         {editorMode === 'images' && ' New images use the default duration below.'}
       </p>
+
+      {editorMode === 'scenes' && scenesConfig && (
+        <section className="mb-4 max-w-3xl rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
+          <h3 className="mb-1 text-sm font-semibold text-white">Scenes summary</h3>
+          <div className="mt-2 flex justify-between text-sm">
+            <span className="text-zinc-400">Scenes</span>
+            <span className="text-white">{scenesConfig.scenes.length}</span>
+          </div>
+          <div className="mt-2 flex justify-between text-sm">
+            <span className="text-zinc-400">Total length</span>
+            <span className="text-white">
+              {formatMinutesSeconds(scenesConfig.endTimeSeconds)}
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-zinc-500">
+            Adjust scene start times and end time in the Scenes panel. Each scene divides its media
+            equally.
+          </p>
+        </section>
+      )}
 
       {editorMode === 'images' && (
         <>
@@ -112,7 +136,11 @@ export function DurationPanel(): React.JSX.Element {
           )}
           <div className="mt-2 flex justify-between">
             <span className="text-zinc-400">
-              {editorMode === 'images' ? 'Images' : 'Images (replaced)'}
+              {editorMode === 'images'
+                ? 'Images'
+                : editorMode === 'scenes'
+                  ? 'Clips'
+                  : 'Images (replaced)'}
             </span>
             <span className="text-white">{imageCount}</span>
           </div>
@@ -125,7 +153,9 @@ export function DurationPanel(): React.JSX.Element {
             <span className="font-medium text-accent-hover">{formatTime(totalDuration)}</span>
           </div>
           <p className="mt-3 text-xs text-zinc-500">
-            Edit each clip&apos;s duration on the timeline strip below the preview.
+            {editorMode === 'scenes'
+              ? 'Clip durations are auto-calculated from scene timestamps.'
+              : "Edit each clip's duration on the timeline strip below the preview."}
           </p>
         </div>
       )}

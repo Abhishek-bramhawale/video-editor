@@ -32,6 +32,25 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function getSceneBoundaryMarkers(
+  clips: TimelineClip[],
+  transitionSeconds: number,
+  totalDuration: number
+): { percent: number }[] {
+  if (totalDuration <= 0 || clips.length < 2) return []
+  let elapsed = 0
+  const markers: { percent: number }[] = []
+  for (let i = 0; i < clips.length - 1; i++) {
+    elapsed += clips[i].durationSeconds - transitionSeconds
+    const cur = clips[i].sceneId
+    const next = clips[i + 1].sceneId
+    if (cur && next && cur !== next) {
+      markers.push({ percent: (elapsed / totalDuration) * 100 })
+    }
+  }
+  return markers
+}
+
 function getTransitionMarkers(
   clips: TimelineClip[],
   transitionSeconds: number,
@@ -90,6 +109,16 @@ export function Timeline({
     () => getTransitionMarkers(clips, transitionSeconds, computedTotal),
     [clips, transitionSeconds, computedTotal]
   )
+
+  const sceneBoundaries = useMemo(
+    () =>
+      editorMode === 'scenes'
+        ? getSceneBoundaryMarkers(clips, transitionSeconds, computedTotal)
+        : [],
+    [clips, transitionSeconds, computedTotal, editorMode]
+  )
+
+  const isScenesMode = editorMode === 'scenes'
 
   const onDragOverItem = useCallback(
     (e: React.DragEvent, index: number) => {
@@ -159,6 +188,14 @@ export function Timeline({
             background: `linear-gradient(to right, #6366f1 ${progress}%, #2a2a35 ${progress}%)`
           }}
         />
+        {sceneBoundaries.map(({ percent }, i) => (
+          <div
+            key={`scene-${i}`}
+            title="Scene boundary"
+            className="pointer-events-none absolute top-0 bottom-0 z-[5] w-0.5 -translate-x-1/2 bg-amber-400/80"
+            style={{ left: `${percent}%` }}
+          />
+        ))}
         {markers.map(({ index, percent }) => (
           <button
             key={index}
@@ -202,6 +239,8 @@ export function Timeline({
                   widthPx={widthPx}
                   pixelsPerSecond={pixelsPerSecond}
                   canReplace={canReplace}
+                  allowDurationEdit={!isScenesMode}
+                  allowReorder={!isScenesMode}
                   onRemove={onRemove}
                   onReplace={handleReplace}
                   onDurationChange={setClipDuration}
