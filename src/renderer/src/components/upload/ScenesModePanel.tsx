@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Scene } from '@renderer/types'
 import {
   fitClipsToSceneDuration,
@@ -65,6 +65,7 @@ interface SceneCardProps {
   scenes: Scene[]
   endTimeSeconds: number
   transitionSeconds: number
+  activeClipId: string | null
 }
 
 function SceneCard({
@@ -72,11 +73,13 @@ function SceneCard({
   sceneIndex,
   scenes,
   endTimeSeconds,
-  transitionSeconds
+  transitionSeconds,
+  activeClipId
 }: SceneCardProps): React.JSX.Element {
   const setSceneName = useProjectStore((s) => s.setSceneName)
   const setSceneStartTime = useProjectStore((s) => s.setSceneStartTime)
   const removeMediaFromScene = useProjectStore((s) => s.removeMediaFromScene)
+  const replaceSceneMedia = useProjectStore((s) => s.replaceSceneMedia)
   const imageThumbMin = useUiStore((s) => s.imageThumbMin)
 
   const {
@@ -90,12 +93,26 @@ function SceneCard({
     isLoading
   } = useSceneMediaUpload(scene.id)
   const [dragOver, setDragOver] = useState(false)
+  const mediaRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const span = getSceneSpanSeconds(sceneIndex, scenes, endTimeSeconds)
   const perClip =
     scene.media.length > 0
       ? fitClipsToSceneDuration(scene.media.length, span, transitionSeconds)
       : 0
+
+  const availableByBase = useMemo(() => {
+    const map = new Map<string, { hasImage: boolean; hasVideo: boolean }>()
+    for (const sc of scenes) {
+      for (const item of sc.media) {
+        const prev = map.get(item.baseName) ?? { hasImage: false, hasVideo: false }
+        if (item.mediaType === 'image') prev.hasImage = true
+        if (item.mediaType === 'video') prev.hasVideo = true
+        map.set(item.baseName, prev)
+      }
+    }
+    return map
+  }, [scenes])
 
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -185,7 +202,14 @@ function SceneCard({
             {scene.media.map((item) => (
               <div
                 key={item.id}
-                className="group relative overflow-hidden rounded-lg bg-surface-900 ring-1 ring-surface-600"
+                ref={(el) => {
+                  mediaRefs.current[item.id] = el
+                }}
+                className={`group relative overflow-hidden rounded-lg bg-surface-900 ring-surface-600 ${
+                  activeClipId === item.id
+                    ? 'ring-4 ring-blue-400 shadow-[0_0_0_2px_rgba(59,130,246,0.45)]'
+                    : 'ring-1'
+                }`}
                 title={item.fileName}
               >
                 <img
@@ -200,6 +224,26 @@ function SceneCard({
                 >
                   ×
                 </button>
+                {(() => {
+                  const available = availableByBase.get(item.baseName)
+                  const canReplace =
+                    item.mediaType === 'image'
+                      ? !!available?.hasVideo
+                      : !!available?.hasImage
+                  if (!canReplace) return null
+                  const replaceLabel = item.mediaType === 'image' ? 'Replace with vid' : 'Replace with img'
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void replaceSceneMedia(scene.id, item.id)
+                      }}
+                      className="absolute bottom-4 left-0.5 rounded bg-black/70 px-1 text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      {replaceLabel}
+                    </button>
+                  )
+                })()}
                 <p className="truncate px-1 py-0.5 text-[9px] text-zinc-400">
                   {item.mediaType === 'video' ? 'VID' : 'IMG'} · {item.baseName}
                 </p>
@@ -242,6 +286,7 @@ export function ScenesModePanel(): React.JSX.Element {
   const setSceneCount = useProjectStore((s) => s.setSceneCount)
   const setScenesEndTime = useProjectStore((s) => s.setScenesEndTime)
   const clips = useProjectStore((s) => s.clips)
+  const activeClipId = useProjectStore((s) => s.previewActiveClipId)
 
   const [countInput, setCountInput] = useState(scenesConfig?.scenes.length ?? 1)
 
@@ -284,7 +329,7 @@ export function ScenesModePanel(): React.JSX.Element {
   const issues = validateScenes(scenesConfig.scenes, scenesConfig.endTimeSeconds)
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-4">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto p-4">
       <div className="mb-3 flex shrink-0 items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Scenes</h2>
@@ -330,7 +375,7 @@ export function ScenesModePanel(): React.JSX.Element {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
+      <div className="space-y-3 pb-2 pr-1">
         {scenesConfig.scenes.map((scene, index) => (
           <SceneCard
             key={scene.id}
@@ -339,6 +384,7 @@ export function ScenesModePanel(): React.JSX.Element {
             scenes={scenesConfig.scenes}
             endTimeSeconds={scenesConfig.endTimeSeconds}
             transitionSeconds={transitionSeconds}
+            activeClipId={activeClipId}
           />
         ))}
       </div>

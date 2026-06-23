@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TimelineClip, TransitionId } from '@renderer/types'
 import { getTransition } from '@renderer/lib/transitions'
 import { computeTotalFromDurations } from '@renderer/lib/duration'
@@ -100,6 +100,7 @@ export function Timeline({
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [picker, setPicker] = useState<PickerState | null>(null)
   const [replaceError, setReplaceError] = useState<string | null>(null)
+  const clipRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const loadedBaseNames = useMemo(
     () => new Set(loadedImages.map((img) => img.baseName)),
@@ -176,6 +177,15 @@ export function Timeline({
     const result = replaceClipWithImage(clipId)
     if (!result.ok) setReplaceError(result.error)
   }
+
+  useEffect(() => {
+    if (activeIndex == null || activeIndex < 0 || activeIndex >= clips.length) return
+    const activeClip = clips[activeIndex]
+    if (!activeClip) return
+    const el = clipRefs.current[activeClip.id]
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [activeIndex, clips])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-surface-600 bg-surface-800 px-4 py-3">
@@ -255,7 +265,13 @@ export function Timeline({
             const widthPx = clipWidthPx(clip.durationSeconds, pixelsPerSecond)
 
             return (
-              <div key={clip.id} className="flex shrink-0 items-end gap-1">
+              <div
+                key={clip.id}
+                ref={(el) => {
+                  clipRefs.current[clip.id] = el
+                }}
+                className="flex shrink-0 items-end gap-1"
+              >
                 <TimelineClipCard
                   clip={clip}
                   index={index}

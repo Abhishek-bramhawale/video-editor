@@ -5,7 +5,9 @@ import { BottomNav } from './BottomNav'
 import { MainPanel } from './MainPanel'
 import { PreviewWorkspace } from '@renderer/components/preview/PreviewWorkspace'
 import { useUiStore } from '@renderer/stores/uiStore'
+import { useProjectStore } from '@renderer/stores/projectStore'
 import { useUILayoutSync } from '@renderer/hooks/useUILayoutSync'
+import { useUndoKeyboard } from '@renderer/hooks/useUndoKeyboard'
 import {
   clampPreviewSectionHeight,
   MIN_MAIN_PANEL_HEIGHT
@@ -13,6 +15,8 @@ import {
 
 export function AppShell(): React.JSX.Element {
   useUILayoutSync()
+  const undo = useProjectStore((s) => s.undo)
+  useUndoKeyboard(undo)
 
   const previewHeight = useUiStore((s) => s.previewHeight)
   const setPreviewHeight = useUiStore((s) => s.setPreviewHeight)

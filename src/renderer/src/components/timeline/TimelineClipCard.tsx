@@ -90,9 +90,11 @@ export function TimelineClipCard({
         onDragStart={allowReorder ? onDragStartReorder : undefined}
         onDragOver={allowReorder ? onDragOverReorder : undefined}
         onDragEnd={allowReorder ? onDragEndReorder : undefined}
-        className={`group relative overflow-hidden rounded-lg ring-1 ${
+        className={`group relative overflow-hidden rounded-lg ${
           allowReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
-        } ${isActive ? 'ring-accent' : 'ring-surface-600'} ${isResizing ? 'ring-accent' : ''}`}
+        } ${isActive ? 'ring-4 ring-blue-400' : 'ring-1 ring-surface-600'} ${
+          isResizing ? 'ring-4 ring-blue-400' : ''
+        }`}
         style={{ width: widthPx, height: thumbHeight }}
         title={
           allowDurationEdit

@@ -112,6 +112,7 @@ export function PreviewWorkspace(): React.JSX.Element {
   const editorMode = useProjectStore((s) => s.editorMode)
   const reorderClips = useProjectStore((s) => s.reorderClips)
   const removeClip = useProjectStore((s) => s.removeClip)
+  const setPreviewActiveClipId = useProjectStore((s) => s.setPreviewActiveClipId)
   const previewHeight = useUiStore((s) => s.previewHeight)
   const timelineHeight = useUiStore((s) => s.timelineHeight)
   const setTimelineHeight = useUiStore((s) => s.setTimelineHeight)
@@ -154,6 +155,10 @@ export function PreviewWorkspace(): React.JSX.Element {
   const styles = isTransitioning
     ? getTransitionPreviewStyles(currentClip?.transitionId, state.transitionT)
     : null
+
+  useEffect(() => {
+    setPreviewActiveClipId(currentClip?.id ?? null)
+  }, [currentClip?.id, setPreviewActiveClipId])
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

@@ -50,6 +50,7 @@ interface ProjectState {
   setScenesEndTime: (seconds: number) => void
   addMediaToScene: (sceneId: string, items: SceneMediaItem[]) => void
   removeMediaFromScene: (sceneId: string, mediaId: string) => void
+  replaceSceneMedia: (sceneId: string, mediaId: string) => { ok: true } | { ok: false; error: string }
   addVideos: (clips: TimelineClip[]) => void
   addImagesToTimeline: (images: LoadedImage[]) => void
   loadImages: (images: LoadedImage[]) => void
@@ -61,9 +62,29 @@ interface ProjectState {
   setExportSettings: (settings: Partial<ExportSettings>) => void
   randomizeImageEffects: () => void
   loadProject: (data: ProjectData) => void
+  undo: () => void
+  setPreviewActiveClipId: (clipId: string | null) => void
   markClean: () => void
   resetProject: () => void
+  undoPast: UndoSnapshot[]
+  undoFuture: UndoSnapshot[]
+  previewActiveClipId: string | null
 }
+
+type UndoSnapshot = Pick<
+  ProjectState,
+  | 'projectName'
+  | 'editorMode'
+  | 'defaultImageClipSeconds'
+  | 'targetTotalDurationSeconds'
+  | 'scenesConfig'
+  | 'clips'
+  | 'loadedImages'
+  | 'transitionSeconds'
+  | 'audio'
+  | 'exportSettings'
+  | 'isDirty'
+>
 
 function normalizeOrders(clips: TimelineClip[]): TimelineClip[] {
   return clips.map((clip, index) => ({ ...clip, order: index }))
@@ -235,6 +256,35 @@ function applyScenesRebuild(
   return { clips: buildClipsFromScenesConfig(scenesConfig, transitionSeconds) }
 }
 
+function takeUndoSnapshot(state: ProjectState): UndoSnapshot {
+  return {
+    projectName: state.projectName,
+    editorMode: state.editorMode,
+    defaultImageClipSeconds: state.defaultImageClipSeconds,
+    targetTotalDurationSeconds: state.targetTotalDurationSeconds,
+    scenesConfig: structuredClone(state.scenesConfig),
+    clips: structuredClone(state.clips),
+    loadedImages: structuredClone(state.loadedImages),
+    transitionSeconds: state.transitionSeconds,
+    audio: structuredClone(state.audio),
+    exportSettings: structuredClone(state.exportSettings),
+    isDirty: state.isDirty
+  }
+}
+
+function applyUndoSnapshot(
+  state: ProjectState,
+  snapshot: UndoSnapshot,
+  undoPast: UndoSnapshot[],
+  undoFuture: UndoSnapshot[]
+): Partial<ProjectState> {
+  return {
+    ...snapshot,
+    undoPast,
+    undoFuture
+  }
+}
+
 const initialState = {
   projectName: 'Untitled Project',
   activePanel: 'images' as AppPanel,
@@ -247,13 +297,32 @@ const initialState = {
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
   audio: null as AudioTrack | null,
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
-  isDirty: false
+  isDirty: false,
+  undoPast: [] as UndoSnapshot[],
+  undoFuture: [] as UndoSnapshot[],
+  previewActiveClipId: null as string | null
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   ...initialState,
 
   setActivePanel: (panel) => set({ activePanel: panel }),
+
+  undo: () => {
+    set((state) => {
+      if (state.undoPast.length === 0) return state
+      const prev = state.undoPast[state.undoPast.length - 1]
+      const current = takeUndoSnapshot(state)
+      return applyUndoSnapshot(
+        state,
+        prev,
+        state.undoPast.slice(0, -1),
+        [current, ...state.undoFuture].slice(0, 100)
+      )
+    })
+  },
+
+  setPreviewActiveClipId: (clipId) => set({ previewActiveClipId: clipId }),
 
   setEditorMode: (mode) => {
     const state = get()
@@ -269,28 +338,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (!ok) return
     }
     slideshowRandomizer.reset()
-    set({
+    set((s) => ({
       editorMode: mode,
       clips: [],
       loadedImages: [],
       scenesConfig: null,
       targetTotalDurationSeconds: null,
-      isDirty: true
-    })
+      isDirty: true,
+      undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
+      undoFuture: []
+    }))
   },
 
-  setProjectName: (name) => set({ projectName: name, isDirty: true }),
+  setProjectName: (name) =>
+    set((s) => ({
+      projectName: name,
+      isDirty: true,
+      undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
+      undoFuture: []
+    })),
 
   setDefaultImageClipSeconds: (seconds) => {
     const value = Math.max(0.1, seconds)
-    set({ defaultImageClipSeconds: value, isDirty: true })
+    set((s) => ({
+      defaultImageClipSeconds: value,
+      isDirty: true,
+      undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
+      undoFuture: []
+    }))
   },
 
   setTargetTotalDuration: (seconds) => {
     const target = Math.max(0.1, seconds)
     set((state) => {
       if (state.clips.length === 0) {
-        return { targetTotalDurationSeconds: target, isDirty: true }
+        return {
+          targetTotalDurationSeconds: target,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
       const fit = applyImagesDurationFit(state.clips, state.transitionSeconds, target)
       return {
@@ -300,7 +387,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...(fit.defaultImageClipSeconds != null
           ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
           : {}),
-        isDirty: true
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
       }
     })
   },
@@ -310,14 +399,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => {
       if (state.editorMode === 'scenes' && state.scenesConfig) {
         const { clips } = applyScenesRebuild(state.scenesConfig, transition)
-        return { transitionSeconds: transition, clips, isDirty: true }
+        return {
+          transitionSeconds: transition,
+          clips,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
       if (
         state.editorMode !== 'images' ||
         state.targetTotalDurationSeconds == null ||
         state.clips.length === 0
       ) {
-        return { transitionSeconds: transition, isDirty: true }
+        return {
+          transitionSeconds: transition,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
       const fit = applyImagesDurationFit(
         state.clips,
@@ -330,7 +430,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...(fit.defaultImageClipSeconds != null
           ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
           : {}),
-        isDirty: true
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
       }
     })
   },
@@ -355,7 +457,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         )
         const scenesConfig: ScenesConfig = { scenes: trimmed, endTimeSeconds }
         const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-        return { scenesConfig, clips, isDirty: true }
+        return {
+          scenesConfig,
+          clips,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
 
       if (prev && n > prev.scenes.length) {
@@ -373,12 +481,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const endTimeSeconds = Math.max(prev.endTimeSeconds, scenes[scenes.length - 1].startTimeSeconds + 60)
         const scenesConfig: ScenesConfig = { scenes, endTimeSeconds }
         const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-        return { scenesConfig, clips, isDirty: true }
+        return {
+          scenesConfig,
+          clips,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
 
       if (!prev) {
         const scenesConfig = createDefaultScenesConfig(n)
-        return { scenesConfig, clips: [], isDirty: true }
+        return {
+          scenesConfig,
+          clips: [],
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
 
       return state
@@ -392,7 +512,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const scenes = state.scenesConfig.scenes.map((s) =>
         s.id === sceneId ? { ...s, name: name.trim() || s.name } : s
       )
-      return { scenesConfig: { ...state.scenesConfig, scenes }, isDirty: true }
+      return {
+        scenesConfig: { ...state.scenesConfig, scenes },
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -407,7 +532,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       const scenesConfig = { ...state.scenesConfig, scenes }
       const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-      return { scenesConfig, clips, isDirty: true }
+      return {
+        scenesConfig,
+        clips,
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -420,7 +551,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const endTimeSeconds = Math.max(lastStart + 1, seconds)
       const scenesConfig = { ...state.scenesConfig, endTimeSeconds }
       const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-      return { scenesConfig, clips, isDirty: true }
+      return {
+        scenesConfig,
+        clips,
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -433,7 +570,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       const scenesConfig = { ...state.scenesConfig, scenes }
       const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-      return { scenesConfig, clips, isDirty: true }
+      return {
+        scenesConfig,
+        clips,
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -446,8 +589,80 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       const scenesConfig = { ...state.scenesConfig, scenes }
       const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-      return { scenesConfig, clips, isDirty: true }
+      return {
+        scenesConfig,
+        clips,
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
+  },
+
+  replaceSceneMedia: (_sceneId, mediaId) => {
+    const state = get()
+    if (state.editorMode !== 'scenes' || !state.scenesConfig) {
+      return { ok: false, error: 'Scenes mode is required' }
+    }
+
+    let source: SceneMediaItem | null = null
+    for (const s of state.scenesConfig.scenes) {
+      const found = s.media.find((m) => m.id === mediaId)
+      if (found) {
+        source = found
+        break
+      }
+    }
+    if (!source) return { ok: false, error: 'Media not found' }
+
+    const targetType: SceneMediaItem['mediaType'] =
+      source.mediaType === 'image' ? 'video' : 'image'
+
+    let match: SceneMediaItem | null = null
+    for (const s of state.scenesConfig.scenes) {
+      const found = s.media.find(
+        (m) => m.baseName === source?.baseName && m.mediaType === targetType
+      )
+      if (found) {
+        match = found
+        break
+      }
+    }
+    if (!match) {
+      return { ok: false, error: `No ${targetType} named "${source.baseName}" found in scenes` }
+    }
+
+    set((s) => {
+      if (!s.scenesConfig) return s
+      const scenes = s.scenesConfig.scenes.map((scene) => ({
+        ...scene,
+        media: scene.media.map((m) =>
+          m.id === mediaId
+            ? {
+                ...m,
+                mediaType: match!.mediaType,
+                filePath: match!.filePath,
+                fileName: match!.fileName,
+                format: match!.format,
+                width: match!.width,
+                height: match!.height,
+                thumbnailUrl: match!.thumbnailUrl,
+                nativeDurationSeconds: match!.nativeDurationSeconds
+              }
+            : m
+        )
+      }))
+      const scenesConfig = { ...s.scenesConfig, scenes }
+      const { clips } = applyScenesRebuild(scenesConfig, s.transitionSeconds)
+      return {
+        scenesConfig,
+        clips,
+        isDirty: true,
+        undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
+        undoFuture: []
+      }
+    })
+    return { ok: true }
   },
 
   setClipTransition: (clipIndex, transitionId) => {
@@ -455,7 +670,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       clips: state.clips.map((clip, i) =>
         i === clipIndex ? { ...clip, transitionId } : clip
       ),
-      isDirty: true
+      isDirty: true,
+      undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+      undoFuture: []
     }))
   },
 
@@ -466,7 +683,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       clips: state.clips.map((clip) =>
         clip.id === clipId ? { ...clip, durationSeconds: duration } : clip
       ),
-      isDirty: true
+      isDirty: true,
+      undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+      undoFuture: []
     }))
   },
 
@@ -486,7 +705,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
       const combined = normalizeOrders([...existing, ...withTransitions])
-      return { clips: combined, isDirty: true }
+      return {
+        clips: combined,
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -519,11 +743,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           ...(fit.defaultImageClipSeconds != null
             ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
             : {}),
-          isDirty: true
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
         }
       }
 
-      return { clips: finalizeClipList(clips), isDirty: true }
+      return {
+        clips: finalizeClipList(clips),
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -534,7 +765,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const img of newImages) {
         byBase.set(img.baseName, img)
       }
-      return { loadedImages: Array.from(byBase.values()), isDirty: true }
+      return {
+        loadedImages: Array.from(byBase.values()),
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -569,7 +805,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     set((s) => ({
       clips: s.clips.map((c, i) => (i === clipIndex ? updated : c)),
-      isDirty: true
+      isDirty: true,
+      undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
+      undoFuture: []
     }))
     return { ok: true }
   },
@@ -583,12 +821,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }))
         const scenesConfig = { ...state.scenesConfig, scenes }
         const { clips } = applyScenesRebuild(scenesConfig, state.transitionSeconds)
-        return { scenesConfig, clips, isDirty: true }
+        return {
+          scenesConfig,
+          clips,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
 
       const remaining = normalizeOrders(state.clips.filter((c) => c.id !== id))
       if (remaining.length === 0) {
-        return { clips: remaining, isDirty: true }
+        return {
+          clips: remaining,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
       }
 
       if (state.editorMode === 'images') {
@@ -605,11 +854,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           ...(fit.defaultImageClipSeconds != null
             ? { defaultImageClipSeconds: fit.defaultImageClipSeconds }
             : {}),
-          isDirty: true
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
         }
       }
 
-      return { clips: finalizeClipList(remaining), isDirty: true }
+      return {
+        clips: finalizeClipList(remaining),
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -619,13 +875,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const items = [...state.clips]
       const [moved] = items.splice(fromIndex, 1)
       items.splice(toIndex, 0, moved)
-      return { clips: normalizeOrders(items), isDirty: true }
+      return {
+        clips: normalizeOrders(items),
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
   setAudio: (audio) =>
     set((state) => {
-      if (!audio) return { audio: null, isDirty: true }
+      if (!audio) {
+        return {
+          audio: null,
+          isDirty: true,
+          undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+          undoFuture: []
+        }
+      }
       const timelineTotal =
         state.clips.length > 0
           ? computeTotalFromDurations(
@@ -640,7 +908,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           ...normalized,
           startOffsetSeconds: Math.min(normalized.startOffsetSeconds, maxOffset)
         },
-        isDirty: true
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
       }
     }),
 
@@ -660,7 +930,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           ...state.audio,
           startOffsetSeconds: Math.max(0, Math.min(maxOffset, seconds))
         },
-        isDirty: true
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
       }
     })
   },
@@ -668,7 +940,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setExportSettings: (settings) =>
     set((state) => ({
       exportSettings: { ...state.exportSettings, ...settings },
-      isDirty: true
+      isDirty: true,
+      undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+      undoFuture: []
     })),
 
   randomizeImageEffects: () => {
@@ -683,7 +957,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const i of imageIndices) {
         clips[i] = { ...clips[i], effectId: slideshowRandomizer.pickEffect() }
       }
-      return { clips, isDirty: true }
+      return {
+        clips,
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
     })
   },
 
@@ -709,7 +988,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       loadedImages: data.loadedImages ?? [],
       audio: data.audio ? normalizeAudioTrack(data.audio) : null,
       exportSettings: data.exportSettings,
-      isDirty: false
+      isDirty: false,
+      undoPast: [],
+      undoFuture: []
     })
   },
 
@@ -717,7 +998,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   resetProject: () => {
     slideshowRandomizer.reset()
-    set({ ...initialState, exportSettings: { ...DEFAULT_EXPORT_SETTINGS } })
+    set((s) => ({
+      ...initialState,
+      exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
+      undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
+      undoFuture: []
+    }))
   }
 }))
 
