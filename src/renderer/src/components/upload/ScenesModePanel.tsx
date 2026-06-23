@@ -63,6 +63,7 @@ interface SceneCardProps {
   scene: Scene
   sceneIndex: number
   scenes: Scene[]
+  replacementMedia: import('@renderer/types').SceneMediaItem[]
   endTimeSeconds: number
   transitionSeconds: number
   activeClipId: string | null
@@ -72,6 +73,7 @@ function SceneCard({
   scene,
   sceneIndex,
   scenes,
+  replacementMedia,
   endTimeSeconds,
   transitionSeconds,
   activeClipId
@@ -111,8 +113,14 @@ function SceneCard({
         map.set(item.baseName, prev)
       }
     }
+    for (const item of replacementMedia) {
+      const prev = map.get(item.baseName) ?? { hasImage: false, hasVideo: false }
+      if (item.mediaType === 'image') prev.hasImage = true
+      if (item.mediaType === 'video') prev.hasVideo = true
+      map.set(item.baseName, prev)
+    }
     return map
-  }, [scenes])
+  }, [scenes, replacementMedia])
 
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -287,6 +295,12 @@ export function ScenesModePanel(): React.JSX.Element {
   const setScenesEndTime = useProjectStore((s) => s.setScenesEndTime)
   const clips = useProjectStore((s) => s.clips)
   const activeClipId = useProjectStore((s) => s.previewActiveClipId)
+  const sceneReplacementMedia = useProjectStore((s) => s.sceneReplacementMedia)
+  const loadSceneReplacementMedia = useProjectStore((s) => s.loadSceneReplacementMedia)
+  const removeSceneReplacementMedia = useProjectStore((s) => s.removeSceneReplacementMedia)
+  const replacementInputRef = useRef<HTMLInputElement | null>(null)
+  const [replacementLoading, setReplacementLoading] = useState(false)
+  const [replacementError, setReplacementError] = useState<string | null>(null)
 
   const [countInput, setCountInput] = useState(scenesConfig?.scenes.length ?? 1)
 
@@ -328,6 +342,58 @@ export function ScenesModePanel(): React.JSX.Element {
 
   const issues = validateScenes(scenesConfig.scenes, scenesConfig.endTimeSeconds)
 
+  const onReplacementInput = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setReplacementLoading(true)
+    setReplacementError(null)
+    try {
+      const items: import('@renderer/types').SceneMediaItem[] = []
+      for (const file of Array.from(files)) {
+        let path = ''
+        try {
+          path = window.slideshow.getPathForFile(file)
+        } catch {
+          continue
+        }
+        if (/\.(jpe?g|png|webp)$/i.test(path)) {
+          const meta = await window.slideshow.getImageMetadata(path)
+          items.push({
+            id: crypto.randomUUID(),
+            filePath: meta.filePath,
+            fileName: meta.fileName,
+            baseName: meta.fileName.replace(/\.[^.]+$/, ''),
+            mediaType: 'image',
+            thumbnailUrl: meta.thumbnailUrl,
+            width: meta.width,
+            height: meta.height,
+            format: meta.format
+          })
+        } else if (/\.(mp4|mov|webm|mkv)$/i.test(path)) {
+          const meta = await window.slideshow.getVideoMetadata(path)
+          items.push({
+            id: crypto.randomUUID(),
+            filePath: meta.filePath,
+            fileName: meta.fileName,
+            baseName: meta.fileName.replace(/\.[^.]+$/, ''),
+            mediaType: 'video',
+            thumbnailUrl: meta.thumbnailUrl,
+            width: meta.width,
+            height: meta.height,
+            format: meta.format,
+            nativeDurationSeconds: meta.durationSeconds
+          })
+        }
+      }
+      loadSceneReplacementMedia(items)
+    } catch (err) {
+      setReplacementError(err instanceof Error ? err.message : 'Failed to load replacements')
+    } finally {
+      setReplacementLoading(false)
+      e.target.value = ''
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto p-4">
       <div className="mb-3 flex shrink-0 items-center justify-between">
@@ -365,6 +431,53 @@ export function ScenesModePanel(): React.JSX.Element {
         </p>
       </section>
 
+      <section className="mb-3 shrink-0 rounded-xl bg-surface-800 p-4 ring-1 ring-surface-600">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">Upload replacements</h3>
+          <button
+            type="button"
+            onClick={() => replacementInputRef.current?.click()}
+            disabled={replacementLoading}
+            className="rounded-lg bg-surface-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface-600 disabled:opacity-50"
+          >
+            {replacementLoading ? 'Loading…' : 'Load replacements'}
+          </button>
+          <input
+            ref={replacementInputRef}
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.mkv"
+            className="hidden"
+            onChange={(e) => {
+              void onReplacementInput(e)
+            }}
+          />
+        </div>
+        <p className="mb-2 text-xs text-zinc-500">
+          Files here are not added to timeline. They are only used by replace-with-img/vid by same name.
+        </p>
+        {replacementError && <p className="mb-2 text-xs text-red-400">{replacementError}</p>}
+        {sceneReplacementMedia.length > 0 && (
+          <div className="grid max-h-28 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-4 lg:grid-cols-6">
+            {sceneReplacementMedia.map((item) => (
+              <div key={item.id} className="group relative overflow-hidden rounded-lg bg-surface-900 ring-1 ring-surface-600">
+                <img src={item.thumbnailUrl} alt={item.fileName} className="aspect-video w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => removeSceneReplacementMedia(item.id)}
+                  className="absolute right-0.5 top-0.5 rounded bg-black/70 px-1 text-[10px] text-white opacity-0 group-hover:opacity-100"
+                >
+                  ×
+                </button>
+                <p className="truncate px-1 py-0.5 text-[9px] text-zinc-400">
+                  {item.mediaType === 'video' ? 'VID' : 'IMG'} · {item.baseName}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {issues.length > 0 && (
         <div className="mb-3 shrink-0 rounded-lg bg-amber-500/10 px-4 py-3 text-xs text-amber-300 ring-1 ring-amber-500/30">
           <ul className="list-inside list-disc space-y-1">
@@ -382,6 +495,7 @@ export function ScenesModePanel(): React.JSX.Element {
             scene={scene}
             sceneIndex={index}
             scenes={scenesConfig.scenes}
+            replacementMedia={sceneReplacementMedia}
             endTimeSeconds={scenesConfig.endTimeSeconds}
             transitionSeconds={transitionSeconds}
             activeClipId={activeClipId}

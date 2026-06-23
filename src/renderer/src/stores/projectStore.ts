@@ -16,7 +16,6 @@ import { DEFAULT_EXPORT_SETTINGS, DEFAULT_PER_IMAGE_DURATION_SECONDS, DEFAULT_TR
 import { getBaseName, sortByBaseName } from '@shared/lib/filenames'
 import {
   computeTotalFromDurations,
-  fitClipsToSceneDuration,
   fitDurationsToTargetTotal,
   getSceneSpanSeconds
 } from '@shared/lib/duration'
@@ -29,6 +28,7 @@ interface ProjectState {
   defaultImageClipSeconds: number
   targetTotalDurationSeconds: number | null
   scenesConfig: ScenesConfig | null
+  sceneReplacementMedia: SceneMediaItem[]
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   transitionSeconds: number
@@ -49,6 +49,8 @@ interface ProjectState {
   setSceneStartTime: (sceneIndex: number, seconds: number) => void
   setScenesEndTime: (seconds: number) => void
   addMediaToScene: (sceneId: string, items: SceneMediaItem[]) => void
+  loadSceneReplacementMedia: (items: SceneMediaItem[]) => void
+  removeSceneReplacementMedia: (mediaId: string) => void
   removeMediaFromScene: (sceneId: string, mediaId: string) => void
   replaceSceneMedia: (sceneId: string, mediaId: string) => { ok: true } | { ok: false; error: string }
   addVideos: (clips: TimelineClip[]) => void
@@ -78,6 +80,7 @@ type UndoSnapshot = Pick<
   | 'defaultImageClipSeconds'
   | 'targetTotalDurationSeconds'
   | 'scenesConfig'
+  | 'sceneReplacementMedia'
   | 'clips'
   | 'loadedImages'
   | 'transitionSeconds'
@@ -235,7 +238,17 @@ function buildClipsFromScenesConfig(
     if (scene.media.length === 0) continue
 
     const span = getSceneSpanSeconds(si, config.scenes, config.endTimeSeconds)
-    const perClip = fitClipsToSceneDuration(scene.media.length, span, transitionSeconds)
+    const hasNextScene = si < config.scenes.length - 1
+    const transitionCount = scene.media.length > 0
+      ? (scene.media.length - 1) + (hasNextScene ? 1 : 0)
+      : 0
+    const perClip =
+      scene.media.length <= 0
+        ? 0
+        : Math.max(
+            0.1,
+            (span + transitionCount * transitionSeconds) / scene.media.length
+          )
     const sceneDraft = scene.media.map((item, mi) =>
       sceneMediaToTimelineClip(item, clips.length + mi, perClip, scene.id)
     )
@@ -262,12 +275,13 @@ function takeUndoSnapshot(state: ProjectState): UndoSnapshot {
     editorMode: state.editorMode,
     defaultImageClipSeconds: state.defaultImageClipSeconds,
     targetTotalDurationSeconds: state.targetTotalDurationSeconds,
-    scenesConfig: structuredClone(state.scenesConfig),
-    clips: structuredClone(state.clips),
-    loadedImages: structuredClone(state.loadedImages),
+    scenesConfig: state.scenesConfig,
+    sceneReplacementMedia: state.sceneReplacementMedia,
+    clips: state.clips,
+    loadedImages: state.loadedImages,
     transitionSeconds: state.transitionSeconds,
-    audio: structuredClone(state.audio),
-    exportSettings: structuredClone(state.exportSettings),
+    audio: state.audio,
+    exportSettings: state.exportSettings,
     isDirty: state.isDirty
   }
 }
@@ -292,6 +306,7 @@ const initialState = {
   defaultImageClipSeconds: DEFAULT_PER_IMAGE_DURATION_SECONDS,
   targetTotalDurationSeconds: null as number | null,
   scenesConfig: null as ScenesConfig | null,
+  sceneReplacementMedia: [] as SceneMediaItem[],
   clips: [] as TimelineClip[],
   loadedImages: [] as LoadedImage[],
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
@@ -343,6 +358,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       clips: [],
       loadedImages: [],
       scenesConfig: null,
+      sceneReplacementMedia: [],
       targetTotalDurationSeconds: null,
       isDirty: true,
       undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
@@ -580,6 +596,34 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  loadSceneReplacementMedia: (items) => {
+    if (get().editorMode !== 'scenes' || items.length === 0) return
+    set((state) => {
+      const byKey = new Map(
+        state.sceneReplacementMedia.map((m) => [`${m.baseName}:${m.mediaType}`, m] as const)
+      )
+      for (const item of items) {
+        byKey.set(`${item.baseName}:${item.mediaType}`, item)
+      }
+      return {
+        sceneReplacementMedia: Array.from(byKey.values()),
+        isDirty: true,
+        undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+        undoFuture: []
+      }
+    })
+  },
+
+  removeSceneReplacementMedia: (mediaId) => {
+    if (get().editorMode !== 'scenes') return
+    set((state) => ({
+      sceneReplacementMedia: state.sceneReplacementMedia.filter((m) => m.id !== mediaId),
+      isDirty: true,
+      undoPast: [...state.undoPast, takeUndoSnapshot(state)].slice(-100),
+      undoFuture: []
+    }))
+  },
+
   removeMediaFromScene: (sceneId, mediaId) => {
     if (get().editorMode !== 'scenes') return
     set((state) => {
@@ -627,6 +671,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         match = found
         break
       }
+    }
+    if (!match) {
+      match =
+        state.sceneReplacementMedia.find(
+          (m) => m.baseName === source?.baseName && m.mediaType === targetType
+        ) ?? null
     }
     if (!match) {
       return { ok: false, error: `No ${targetType} named "${source.baseName}" found in scenes` }
@@ -983,6 +1033,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       defaultImageClipSeconds: data.defaultImageClipSeconds ?? DEFAULT_PER_IMAGE_DURATION_SECONDS,
       targetTotalDurationSeconds: data.targetTotalDurationSeconds ?? null,
       scenesConfig,
+      sceneReplacementMedia: data.sceneReplacementMedia ?? [],
       transitionSeconds,
       clips,
       loadedImages: data.loadedImages ?? [],
@@ -1010,6 +1061,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 export function useTimelineTotalDuration(): number {
   const clips = useProjectStore((s) => s.clips)
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
+  const editorMode = useProjectStore((s) => s.editorMode)
+  const scenesConfig = useProjectStore((s) => s.scenesConfig)
+  if (editorMode === 'scenes' && scenesConfig) return scenesConfig.endTimeSeconds
   if (clips.length === 0) return 0
   return computeTotalFromDurations(
     clips.map((c) => c.durationSeconds),
@@ -1034,6 +1088,7 @@ export function buildProjectData(): ProjectData {
     defaultImageClipSeconds: state.defaultImageClipSeconds,
     targetTotalDurationSeconds: state.targetTotalDurationSeconds,
     scenesConfig: state.scenesConfig,
+    sceneReplacementMedia: state.sceneReplacementMedia,
     clips: state.clips,
     loadedImages: state.loadedImages,
     audio: state.audio,
@@ -1052,6 +1107,10 @@ export function buildExportProjectData(): ProjectData {
     })),
     loadedImages: data.loadedImages.map(({ thumbnailUrl: _t, ...img }) => ({
       ...img,
+      thumbnailUrl: ''
+    })),
+    sceneReplacementMedia: (data.sceneReplacementMedia ?? []).map(({ thumbnailUrl: _t, ...item }) => ({
+      ...item,
       thumbnailUrl: ''
     }))
   }

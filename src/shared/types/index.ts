@@ -170,6 +170,7 @@ export interface ProjectData {
   defaultImageClipSeconds?: number
   targetTotalDurationSeconds?: number | null
   scenesConfig?: ScenesConfig | null
+  sceneReplacementMedia?: SceneMediaItem[]
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   audio: AudioTrack | null

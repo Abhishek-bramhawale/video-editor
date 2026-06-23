@@ -42,6 +42,13 @@ function clipDurationSeconds(clip: TimelineClip, fps: number): number {
   return Math.max(1 / Math.max(1, fps), clip.durationSeconds)
 }
 
+function needsVideoLoop(clip: TimelineClip, fps: number): boolean {
+  if (clip.mediaType !== 'video') return false
+  const target = clipDurationSeconds(clip, fps)
+  const native = clip.nativeDurationSeconds ?? 0
+  return native > 0 && target > native + 0.01
+}
+
 async function stageClipsForExport(
   clips: TimelineClip[],
   workDir: string
@@ -98,7 +105,11 @@ async function renderClipSegment(
   if (clip.mediaType === 'image') {
     inputArgs.push('-loop', '1', '-t', durationStr, '-i', clip.filePath)
   } else {
-    inputArgs.push('-i', clip.filePath)
+    if (needsVideoLoop(clip, fps)) {
+      inputArgs.push('-stream_loop', '-1', '-t', durationStr, '-i', clip.filePath)
+    } else {
+      inputArgs.push('-i', clip.filePath)
+    }
   }
 
   await runFfmpegWithFilterScript(
@@ -327,7 +338,11 @@ async function renderSinglePass(
     if (clip.mediaType === 'image') {
       inputArgs.push('-loop', '1', '-t', durationStr, '-i', clip.filePath)
     } else {
-      inputArgs.push('-i', clip.filePath)
+      if (needsVideoLoop(clip, fps)) {
+        inputArgs.push('-stream_loop', '-1', '-t', durationStr, '-i', clip.filePath)
+      } else {
+        inputArgs.push('-i', clip.filePath)
+      }
     }
   }
 

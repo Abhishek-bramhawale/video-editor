@@ -47,7 +47,8 @@ export function migrateProjectData(raw: unknown): ProjectData {
       ...data,
       editorMode: data.editorMode ?? (hasVideo ? 'video' : 'images'),
       defaultImageClipSeconds: data.defaultImageClipSeconds ?? 5,
-      targetTotalDurationSeconds: data.targetTotalDurationSeconds ?? null
+      targetTotalDurationSeconds: data.targetTotalDurationSeconds ?? null,
+      sceneReplacementMedia: data.sceneReplacementMedia ?? []
     }
   }
 
@@ -60,6 +61,7 @@ export function migrateProjectData(raw: unknown): ProjectData {
       transitionSeconds: raw.transitionSeconds,
       editorMode: 'images',
       defaultImageClipSeconds: raw.perImageDurationSeconds ?? 5,
+      sceneReplacementMedia: [],
       clips: raw.images.map(slideshowImageToClip),
       loadedImages: [] as LoadedImage[],
       audio: raw.audio,

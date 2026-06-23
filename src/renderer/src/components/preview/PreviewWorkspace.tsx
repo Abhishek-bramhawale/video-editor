@@ -36,7 +36,12 @@ function ClipMedia({
   const seekVideo = useCallback((time: number) => {
     const el = videoRef.current
     if (!el || clip.mediaType !== 'video') return
-    const safeTime = Math.max(0, Math.min(time, el.duration || time))
+    const native = clip.nativeDurationSeconds ?? el.duration
+    const loopedTime =
+      native && Number.isFinite(native) && native > 0
+        ? ((time % native) + native) % native
+        : time
+    const safeTime = Math.max(0, Math.min(loopedTime, el.duration || loopedTime))
     if (Number.isFinite(safeTime) && Math.abs(el.currentTime - safeTime) > 0.08) {
       try {
         el.currentTime = safeTime
@@ -86,6 +91,10 @@ function ClipMedia({
             setVideoReady(true)
             seekVideo(videoTime ?? 0)
           }}
+          loop={
+            !!clip.nativeDurationSeconds &&
+            clip.durationSeconds > clip.nativeDurationSeconds + 0.05
+          }
           onError={() => setVideoReady(false)}
         />
       </>
