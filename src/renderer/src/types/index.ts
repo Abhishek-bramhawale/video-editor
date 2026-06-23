@@ -6,6 +6,7 @@ export type {
   ExportResolution,
   KenBurnsEffectId,
   ClipMediaType,
+  EditorMode,
   TimelineClip,
   LoadedImage,
   SlideshowImage,

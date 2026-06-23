@@ -5,7 +5,7 @@ export type ImageFormat = 'jpg' | 'jpeg' | 'png' | 'webp'
 export type VideoFormat = 'mp4' | 'mov' | 'webm' | 'mkv'
 
 /** Supported audio formats */
-export type AudioFormat = 'mp3' | 'wav' | 'm4a'
+export type AudioFormat = 'mp3' | 'wav' | 'm4a' | 'mpeg'
 
 /** Video export codec */
 export type ExportCodec = 'h264' | 'h265' | 'mov'
@@ -41,6 +41,9 @@ import type { TransitionId } from '../transitions/catalog'
 export type { TransitionId, TransitionFamily } from '../transitions/catalog'
 
 export type ClipMediaType = 'video' | 'image'
+
+/** Editor workflow: images-only slideshow or video-first with image replacement */
+export type EditorMode = 'images' | 'video'
 
 /** A single clip on the timeline (video or image) */
 export interface TimelineClip {
@@ -94,6 +97,8 @@ export interface AudioTrack {
   fileName: string
   format: AudioFormat
   durationSeconds: number
+  /** Where playback starts in the source file (seconds) */
+  startOffsetSeconds: number
   fadeInSeconds: number
   fadeOutSeconds: number
 }
@@ -130,6 +135,9 @@ export interface ProjectData {
   createdAt: string
   updatedAt: string
   transitionSeconds?: number
+  editorMode?: EditorMode
+  defaultImageClipSeconds?: number
+  targetTotalDurationSeconds?: number | null
   clips: TimelineClip[]
   loadedImages: LoadedImage[]
   audio: AudioTrack | null
@@ -196,7 +204,7 @@ export const DEFAULT_AUDIO_FADE_SECONDS = 2
 
 export const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'] as const
 export const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm', '.mkv'] as const
-export const SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a'] as const
+export const SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.mpeg'] as const
 
 export const RESOLUTION_MAP: Record<ExportResolution, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
