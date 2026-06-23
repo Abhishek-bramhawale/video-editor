@@ -169,11 +169,7 @@ async function binaryMergeSegments(
       transitionId: TransitionId | null
     }[] = []
 
-    for (let i = 0; i < level.length; i += 2) {
-      if (i + 1 >= level.length) {
-        nextLevel.push(level[i])
-        continue
-      }
+    for (let i = 0; i + 1 < level.length; i += 2) {
       const left = level[i]
       const right = level[i + 1]
       const boundaryClipIndex = left.startClipIndex + left.clipCount - 1
@@ -205,8 +201,7 @@ async function binaryMergeSegments(
       })
     })
 
-    for (let i = 0; i < level.length; i += 2) {
-      if (i + 1 >= level.length) continue
+    for (let i = 0; i + 1 < level.length; i += 2) {
       const left = level[i]
       const right = level[i + 1]
       const outPath = join(workDir, `bt_${round}_${i}.mp4`)
@@ -216,6 +211,10 @@ async function binaryMergeSegments(
         startClipIndex: left.startClipIndex,
         clipCount: left.clipCount + right.clipCount
       })
+    }
+
+    if (level.length % 2 === 1) {
+      nextLevel.push(level[level.length - 1])
     }
 
     level = nextLevel
@@ -437,7 +436,7 @@ export async function renderSlideshow(
   onProgress: ProgressCallback
 ): Promise<void> {
   const { project } = request
-  const clips = [...project.clips].sort((a, b) => a.order - b.order)
+  const clips = project.clips.map((clip, index) => ({ ...clip, order: index }))
   if (clips.length === 0) throw new Error('No clips to render')
 
   const { width, height } = getResolution(project.exportSettings.resolution)

@@ -80,6 +80,7 @@ export function Timeline({
 }: TimelineProps): React.JSX.Element {
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const editorMode = useProjectStore((s) => s.editorMode)
+  const scenesConfig = useProjectStore((s) => s.scenesConfig)
   const setClipTransition = useProjectStore((s) => s.setClipTransition)
   const setClipDuration = useProjectStore((s) => s.setClipDuration)
   const replaceClipWithImage = useProjectStore((s) => s.replaceClipWithImage)
@@ -120,6 +121,14 @@ export function Timeline({
 
   const isScenesMode = editorMode === 'scenes'
 
+  const sceneStartMarkers = useMemo(() => {
+    if (!isScenesMode || !scenesConfig || scenesConfig.endTimeSeconds <= 0) return []
+    return scenesConfig.scenes
+      .map((s) => s.startTimeSeconds)
+      .filter((t) => t > 0 && t < scenesConfig.endTimeSeconds)
+      .map((t) => ({ percent: (t / scenesConfig.endTimeSeconds) * 100 }))
+  }, [isScenesMode, scenesConfig])
+
   const onDragOverItem = useCallback(
     (e: React.DragEvent, index: number) => {
       e.preventDefault()
@@ -138,6 +147,18 @@ export function Timeline({
       adjustTimelinePixelsPerSecond(e.deltaY < 0 ? 1 : -1)
     },
     [adjustTimelinePixelsPerSecond]
+  )
+
+  const onStripClickSeek = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Clicking the strip should seek even when there are many clips.
+      const el = e.currentTarget
+      const rect = el.getBoundingClientRect()
+      const x = e.clientX - rect.left + el.scrollLeft
+      const percent = el.scrollWidth > 0 ? x / el.scrollWidth : 0
+      onSeek(Math.max(0, Math.min(computedTotal, percent * computedTotal)))
+    },
+    [computedTotal, onSeek]
   )
 
   const openPicker = (index: number, e: React.MouseEvent): void => {
@@ -188,6 +209,14 @@ export function Timeline({
             background: `linear-gradient(to right, #6366f1 ${progress}%, #2a2a35 ${progress}%)`
           }}
         />
+        {sceneStartMarkers.map(({ percent }, i) => (
+          <div
+            key={`sceneStart-${i}`}
+            title="Scene start"
+            className="pointer-events-none absolute top-0 bottom-0 z-[6] w-0.5 -translate-x-1/2 bg-emerald-400/80"
+            style={{ left: `${percent}%` }}
+          />
+        ))}
         {sceneBoundaries.map(({ percent }, i) => (
           <div
             key={`scene-${i}`}
@@ -197,18 +226,12 @@ export function Timeline({
           />
         ))}
         {markers.map(({ index, percent }) => (
-          <button
+          <div
             key={index}
-            type="button"
             title={getTransition(clips[index].transitionId ?? 'crossfade').name}
-            onClick={(e) => openPicker(index, e)}
-            className="absolute top-1/2 z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-accent text-white shadow-lg ring-2 ring-surface-900 hover:scale-110 hover:bg-accent-hover"
+            className="pointer-events-none absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent ring-2 ring-surface-900"
             style={{ left: `${percent}%` }}
-          >
-            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7L8 5z" />
-            </svg>
-          </button>
+          />
         ))}
       </div>
 
@@ -219,6 +242,7 @@ export function Timeline({
             reserveMusicStrip ? 'min-h-[96px]' : 'min-h-[108px]'
           }`}
           onWheel={onWheelZoom}
+          onClick={onStripClickSeek}
           onScroll={(e) => onStripScroll?.(e.currentTarget.scrollLeft)}
         >
           {clips.map((clip, index) => {

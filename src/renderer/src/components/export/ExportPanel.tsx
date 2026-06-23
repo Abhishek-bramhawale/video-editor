@@ -46,7 +46,11 @@ export function ExportPanel(): React.JSX.Element {
     })
 
     setIsExporting(false)
-    setLastResult(result)
+    setLastResult(
+      result.success
+        ? { success: true, path: result.outputPath }
+        : { success: false, error: result.error }
+    )
   }
 
   return (
