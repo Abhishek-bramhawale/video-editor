@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { Scene } from '@renderer/types'
 import {
   fitClipsToSceneDuration,
@@ -63,7 +63,6 @@ interface SceneCardProps {
   scene: Scene
   sceneIndex: number
   scenes: Scene[]
-  replacementMedia: import('@renderer/types').SceneMediaItem[]
   endTimeSeconds: number
   transitionSeconds: number
   activeClipId: string | null
@@ -73,7 +72,6 @@ function SceneCard({
   scene,
   sceneIndex,
   scenes,
-  replacementMedia,
   endTimeSeconds,
   transitionSeconds,
   activeClipId
@@ -81,7 +79,6 @@ function SceneCard({
   const setSceneName = useProjectStore((s) => s.setSceneName)
   const setSceneStartTime = useProjectStore((s) => s.setSceneStartTime)
   const removeMediaFromScene = useProjectStore((s) => s.removeMediaFromScene)
-  const replaceSceneMedia = useProjectStore((s) => s.replaceSceneMedia)
   const imageThumbMin = useUiStore((s) => s.imageThumbMin)
 
   const {
@@ -102,25 +99,6 @@ function SceneCard({
     scene.media.length > 0
       ? fitClipsToSceneDuration(scene.media.length, span, transitionSeconds)
       : 0
-
-  const availableByBase = useMemo(() => {
-    const map = new Map<string, { hasImage: boolean; hasVideo: boolean }>()
-    for (const sc of scenes) {
-      for (const item of sc.media) {
-        const prev = map.get(item.baseName) ?? { hasImage: false, hasVideo: false }
-        if (item.mediaType === 'image') prev.hasImage = true
-        if (item.mediaType === 'video') prev.hasVideo = true
-        map.set(item.baseName, prev)
-      }
-    }
-    for (const item of replacementMedia) {
-      const prev = map.get(item.baseName) ?? { hasImage: false, hasVideo: false }
-      if (item.mediaType === 'image') prev.hasImage = true
-      if (item.mediaType === 'video') prev.hasVideo = true
-      map.set(item.baseName, prev)
-    }
-    return map
-  }, [scenes, replacementMedia])
 
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -232,26 +210,6 @@ function SceneCard({
                 >
                   ×
                 </button>
-                {(() => {
-                  const available = availableByBase.get(item.baseName)
-                  const canReplace =
-                    item.mediaType === 'image'
-                      ? !!available?.hasVideo
-                      : !!available?.hasImage
-                  if (!canReplace) return null
-                  const replaceLabel = item.mediaType === 'image' ? 'Replace with vid' : 'Replace with img'
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void replaceSceneMedia(scene.id, item.id)
-                      }}
-                      className="absolute bottom-4 left-0.5 rounded bg-black/70 px-1 text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      {replaceLabel}
-                    </button>
-                  )
-                })()}
                 <p className="truncate px-1 py-0.5 text-[9px] text-zinc-400">
                   {item.mediaType === 'video' ? 'VID' : 'IMG'} · {item.baseName}
                 </p>
@@ -495,7 +453,6 @@ export function ScenesModePanel(): React.JSX.Element {
             scene={scene}
             sceneIndex={index}
             scenes={scenesConfig.scenes}
-            replacementMedia={sceneReplacementMedia}
             endTimeSeconds={scenesConfig.endTimeSeconds}
             transitionSeconds={transitionSeconds}
             activeClipId={activeClipId}

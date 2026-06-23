@@ -12,6 +12,9 @@ interface TimelineClipCardProps {
   widthPx: number
   pixelsPerSecond: number
   canReplace: boolean
+  showReplaceButton?: boolean
+  replaceLabel?: string
+  replaceMissingLabel?: string
   allowDurationEdit?: boolean
   allowReorder?: boolean
   onRemove: (id: string) => void
@@ -29,6 +32,9 @@ export function TimelineClipCard({
   widthPx,
   pixelsPerSecond,
   canReplace,
+  showReplaceButton = false,
+  replaceLabel = 'Replace',
+  replaceMissingLabel = 'Load pair first',
   allowDurationEdit = true,
   allowReorder = true,
   onRemove,
@@ -126,7 +132,7 @@ export function TimelineClipCard({
         <button
           type="button"
           onClick={() => onRemove(clip.id)}
-          className="absolute bottom-1 right-6 rounded bg-black/60 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute right-0.5 top-0.5 z-20 rounded bg-black/70 p-0.5 text-white"
           aria-label="Remove clip"
         >
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -145,20 +151,20 @@ export function TimelineClipCard({
           </div>
         )}
       </div>
-      {clip.mediaType === 'video' && (
+      {showReplaceButton && (
         <button
           type="button"
           onClick={() => onReplace(clip.id)}
           disabled={!canReplace}
           title={
             canReplace
-              ? `Replace with ${clip.baseName} image`
-              : `Load image named "${clip.baseName}" first`
+              ? `${replaceLabel} (${clip.baseName})`
+              : replaceMissingLabel
           }
           className="w-full rounded bg-surface-700 px-1 py-0.5 text-[9px] text-zinc-300 hover:bg-accent/30 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ width: widthPx }}
         >
-          Replace img
+          {canReplace ? replaceLabel : replaceMissingLabel}
         </button>
       )}
       {clip.mediaType === 'image' && clip.effectId && (

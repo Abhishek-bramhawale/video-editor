@@ -81,9 +81,11 @@ export function Timeline({
   const transitionSeconds = useProjectStore((s) => s.transitionSeconds)
   const editorMode = useProjectStore((s) => s.editorMode)
   const scenesConfig = useProjectStore((s) => s.scenesConfig)
+  const sceneReplacementMedia = useProjectStore((s) => s.sceneReplacementMedia)
   const setClipTransition = useProjectStore((s) => s.setClipTransition)
   const setClipDuration = useProjectStore((s) => s.setClipDuration)
   const replaceClipWithImage = useProjectStore((s) => s.replaceClipWithImage)
+  const replaceSceneMedia = useProjectStore((s) => s.replaceSceneMedia)
   const loadedImages = useProjectStore((s) => s.loadedImages)
   const pixelsPerSecond = useUiStore((s) => s.timelinePixelsPerSecond)
   const adjustTimelinePixelsPerSecond = useUiStore((s) => s.adjustTimelinePixelsPerSecond)
@@ -106,6 +108,24 @@ export function Timeline({
     () => new Set(loadedImages.map((img) => img.baseName)),
     [loadedImages]
   )
+  const scenePairAvailability = useMemo(() => {
+    const map = new Map<string, { hasImage: boolean; hasVideo: boolean }>()
+    for (const scene of scenesConfig?.scenes ?? []) {
+      for (const m of scene.media) {
+        const prev = map.get(m.baseName) ?? { hasImage: false, hasVideo: false }
+        if (m.mediaType === 'image') prev.hasImage = true
+        if (m.mediaType === 'video') prev.hasVideo = true
+        map.set(m.baseName, prev)
+      }
+    }
+    for (const m of sceneReplacementMedia) {
+      const prev = map.get(m.baseName) ?? { hasImage: false, hasVideo: false }
+      if (m.mediaType === 'image') prev.hasImage = true
+      if (m.mediaType === 'video') prev.hasVideo = true
+      map.set(m.baseName, prev)
+    }
+    return map
+  }, [scenesConfig, sceneReplacementMedia])
 
   const markers = useMemo(
     () => getTransitionMarkers(clips, transitionSeconds, computedTotal),
@@ -174,7 +194,10 @@ export function Timeline({
 
   const handleReplace = (clipId: string): void => {
     setReplaceError(null)
-    const result = replaceClipWithImage(clipId)
+    const result =
+      editorMode === 'scenes'
+        ? replaceSceneMedia('', clipId)
+        : replaceClipWithImage(clipId)
     if (!result.ok) setReplaceError(result.error)
   }
 
@@ -258,10 +281,19 @@ export function Timeline({
           {clips.map((clip, index) => {
             const isActive = activeIndex === index
             const hasTransition = index < clips.length - 1
-            const canReplace =
+            const canReplaceVideoMode =
               editorMode === 'video' &&
               clip.mediaType === 'video' &&
               loadedBaseNames.has(clip.baseName)
+            const pair = scenePairAvailability.get(clip.baseName)
+            const canReplaceScenesMode =
+              editorMode === 'scenes' &&
+              !!pair &&
+              (clip.mediaType === 'image' ? pair.hasVideo : pair.hasImage)
+            const canReplace = canReplaceVideoMode || canReplaceScenesMode
+            const showReplaceButton = editorMode === 'scenes' || clip.mediaType === 'video'
+            const replaceLabel =
+              clip.mediaType === 'image' ? 'Replace with vid' : 'Replace with img'
             const widthPx = clipWidthPx(clip.durationSeconds, pixelsPerSecond)
 
             return (
@@ -279,6 +311,9 @@ export function Timeline({
                   widthPx={widthPx}
                   pixelsPerSecond={pixelsPerSecond}
                   canReplace={canReplace}
+                  showReplaceButton={showReplaceButton}
+                  replaceLabel={replaceLabel}
+                  replaceMissingLabel="Load pair first"
                   allowDurationEdit={!isScenesMode}
                   allowReorder={!isScenesMode}
                   onRemove={onRemove}

@@ -684,6 +684,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     set((s) => {
       if (!s.scenesConfig) return s
+      const updatedReplacementMap = new Map(
+        s.sceneReplacementMedia.map((m) => [`${m.baseName}:${m.mediaType}`, m] as const)
+      )
+      updatedReplacementMap.set(`${source!.baseName}:${source!.mediaType}`, {
+        ...source!,
+        // keep same id/base metadata; this becomes available for toggling back
+        id: crypto.randomUUID()
+      })
+
       const scenes = s.scenesConfig.scenes.map((scene) => ({
         ...scene,
         media: scene.media.map((m) =>
@@ -706,6 +715,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const { clips } = applyScenesRebuild(scenesConfig, s.transitionSeconds)
       return {
         scenesConfig,
+        sceneReplacementMedia: Array.from(updatedReplacementMap.values()),
         clips,
         isDirty: true,
         undoPast: [...s.undoPast, takeUndoSnapshot(s)].slice(-100),
